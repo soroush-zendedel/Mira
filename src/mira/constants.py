@@ -1,4 +1,4 @@
-"""Application constants for Mira."""
+﻿"""Application constants for Mira."""
 
 from pathlib import Path
 

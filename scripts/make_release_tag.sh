@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Bump version (SemVer), sync all version fields, print git tag commands.
 #
-# Usage:
+# Usage (Linux/macOS):
 #   bash scripts/make_release_tag.sh 1.0.1
-#   bash scripts/make_release_tag.sh 1.1.0
+#
+# Windows (PowerShell):
+#   powershell -ExecutionPolicy Bypass -File .\scripts\make_release_tag.ps1 1.0.1
 #
 # Rules (SemVer):
 #   MAJOR.MINOR.PATCH

@@ -147,8 +147,9 @@ CI builds the assets and attaches them to the GitHub Release. No manual upload r
 Local optional builds:
 
 ```bash
-bash scripts/build_standalone.sh   # needs pyinstaller (build-time only)
-bash scripts/build_deb.sh 1.0.0    # needs dpkg-deb
+bash scripts/build_standalone.sh              # Linux binary (pyinstaller)
+powershell -File .\scripts\build_standalone.ps1   # Windows mira.exe
+bash scripts/build_deb.sh 1.0.0                 # .deb (Linux/WSL only)
 ```
 
 ---
@@ -175,11 +176,24 @@ Mira uses [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
 Bump and publish:
 
+**Linux / macOS**
+
 ```bash
 bash scripts/make_release_tag.sh 1.0.1
 git add -A && git commit -m "Release v1.0.1"
 git tag -a v1.0.1 -m "Mira v1.0.1"
 git push origin main && git push origin v1.0.1
+```
+
+**Windows (PowerShell)**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\make_release_tag.ps1 1.0.1
+git add -A
+git commit -m "Release v1.0.1"
+git tag -a v1.0.1 -m "Mira v1.0.1"
+git push origin main
+git push origin v1.0.1
 ```
 
 ## PATH during install
