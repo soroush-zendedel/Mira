@@ -1,0 +1,43 @@
+# Normalize line endings: store LF in the repository.
+# Prevents "LF will be replaced by CRLF" noise on Windows (core.autocrlf).
+
+* text=auto eol=lf
+
+# Explicit text types
+*.py      text eol=lf
+*.md      text eol=lf
+*.json    text eol=lf
+*.toml    text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.sh      text eol=lf
+*.txt     text eol=lf
+*.html    text eol=lf
+*.css     text eol=lf
+*.js      text eol=lf
+*.ts      text eol=lf
+VERSION   text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Shell scripts must stay LF (shebang / bash)
+*.sh      text eol=lf
+
+# PowerShell works with LF on modern Windows; keep LF for consistency
+*.ps1     text eol=lf
+
+# Windows cmd launchers (if any) — CRLF is conventional
+*.cmd     text eol=crlf
+*.bat     text eol=crlf
+
+# Binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.exe     binary
+*.dll     binary
+*.zip     binary
+*.deb     binary
+*.whl     binary

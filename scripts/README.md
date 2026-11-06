@@ -200,4 +200,21 @@ Verify downloads with `SHA256SUMS` from the same release.
 - `.github/workflows/release.yml` — build & publish pipeline  
 - `.github/workflows/ci.yml` — tests on push / pull request  
 - `installers/install.sh` / `installers/install.ps1` — user installers (source or release binary)  
-- Root `README.md` — project overview and install instructions  
+- Root `README.md` — project overview and install instructions
+
+---
+
+## Line endings (Windows)
+
+The repository includes a root `.gitattributes` file that forces **LF** in Git for source files. That stops warnings like:
+
+```text
+warning: LF will be replaced by CRLF the next time Git touches it
+```
+
+After pulling this change on Windows, refresh the index once if warnings persist:
+
+```powershell
+git add --renormalize .
+git status
+```
