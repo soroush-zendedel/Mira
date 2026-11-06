@@ -20,69 +20,59 @@ $BinDir = Join-Path $InstallRoot "bin"
 $ConfigDir = Join-Path $env:APPDATA "Mira"
 $DataDir = Join-Path $env:LOCALAPPDATA "Mira"
 
-# Also remove common standalone copy locations
-$ExtraCandidates = @(
-    (Join-Path $env:LOCALAPPDATA "Programs\Mira"),
-    (Join-Path $env:USERPROFILE "bin\mira.exe"),
-    (Join-Path $env:USERPROFILE ".local\bin\mira.exe"),
-    (Join-Path $env:USERPROFILE ".local\bin\mira.cmd")
-)
-
-function Remove-FromUserPath([string]$Dir) {
+function Remove-FromUserPath {
+    param([string]$Dir)
     if (-not $Dir) { return }
-    $target = $Dir.TrimEnd('\')
+    $target = $Dir.TrimEnd("\")
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     if (-not $userPath) { return }
-    $parts = $userPath -split ';' | Where-Object {
-        $_ -and ($_.TrimEnd('\') -ne $target)
+    $parts = @()
+    foreach ($p in ($userPath -split ";")) {
+        if ($p -and ($p.TrimEnd("\") -ne $target)) {
+            $parts += $p
+        }
     }
-    $newPath = ($parts -join ';')
+    $newPath = [string]::Join(";", $parts)
     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    # Update current session
-    $sessionParts = $env:Path -split ';' | Where-Object {
-        $_ -and ($_.TrimEnd('\') -ne $target)
+
+    $sessionParts = @()
+    foreach ($p in ($env:Path -split ";")) {
+        if ($p -and ($p.TrimEnd("\") -ne $target)) {
+            $sessionParts += $p
+        }
     }
-    $env:Path = ($sessionParts -join ';')
-    Write-Host "Removed from user PATH: $target"
+    $env:Path = [string]::Join(";", $sessionParts)
+    Write-Host ("Removed from user PATH: " + $target)
 }
 
 if (-not $Yes) {
-    $reply = Read-Host "Remove Mira application files from $InstallRoot ? [Y/n]"
-    if ($reply -and $reply -notmatch '^[Yy]') {
+    $reply = Read-Host ("Remove Mira application files from " + $InstallRoot + " ? [Y/n]")
+    if ($reply -and ($reply -notmatch "^[Yy]")) {
         Write-Host "Aborted."
         exit 0
     }
 }
 
-# PATH first (BinDir)
-Remove-FromUserPath $BinDir
+Remove-FromUserPath -Dir $BinDir
 
-# Remove install tree
 if (Test-Path $InstallRoot) {
     Remove-Item -Recurse -Force $InstallRoot
-    Write-Host "Removed: $InstallRoot"
+    Write-Host ("Removed: " + $InstallRoot)
 } else {
-    Write-Host "Install root not found: $InstallRoot"
+    Write-Host ("Install root not found: " + $InstallRoot)
 }
 
-# Stray launchers on PATH directories
-Get-Command mira -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-        $p = $_.Source
-        if ($p -and (Test-Path $p)) {
-            # only remove if under user profile
-            if ($p -like "$env:USERPROFILE*" -or $p -like "$env:LOCALAPPDATA*") {
-                Remove-Item -Force $p -ErrorAction SilentlyContinue
-                Write-Host "Removed launcher: $p"
-            }
-        }
-    } catch {}
-}
-
-foreach ($c in $ExtraCandidates) {
+# Best-effort: remove mira.* under user profile bin locations
+$stray = @(
+    (Join-Path $env:USERPROFILE "bin\mira.exe"),
+    (Join-Path $env:USERPROFILE "bin\mira.cmd"),
+    (Join-Path $env:USERPROFILE ".local\bin\mira.exe"),
+    (Join-Path $env:USERPROFILE ".local\bin\mira.cmd")
+)
+foreach ($c in $stray) {
     if (Test-Path $c) {
         Remove-Item -Force $c -ErrorAction SilentlyContinue
-        Write-Host "Removed: $c"
+        Write-Host ("Removed: " + $c)
     }
 }
 
@@ -90,14 +80,14 @@ if ($PurgeData) {
     foreach ($d in @($ConfigDir, $DataDir)) {
         if (Test-Path $d) {
             Remove-Item -Recurse -Force $d
-            Write-Host "Removed data: $d"
+            Write-Host ("Removed data: " + $d)
         }
     }
 } else {
     Write-Host ""
     Write-Host "Config/data kept (if any):"
-    Write-Host "  $ConfigDir"
-    Write-Host "  $DataDir"
+    Write-Host ("  " + $ConfigDir)
+    Write-Host ("  " + $DataDir)
     Write-Host "To delete them too, re-run with -PurgeData"
 }
 
