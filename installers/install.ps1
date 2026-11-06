@@ -76,9 +76,10 @@ function Install-FromRelease {
     }
     if (-not (Test-Path $dest)) { return $false }
     $cmd = Join-Path $BinDir "mira.cmd"
+    # Prefer calling the exe by name in the same directory (avoid nested quoting bugs)
     @"
 @echo off
-\"$dest\" %*
+"%~dp0mira.exe" %*
 "@ | Set-Content -Path $cmd -Encoding ASCII
     Write-Host "Installed standalone: $dest"
     try { & $dest --version } catch {}

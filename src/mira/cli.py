@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import Any
 
 from mira import __version__
@@ -271,9 +272,32 @@ def cmd_config(term: Terminal, cfg: Config, args: argparse.Namespace) -> int:
     return 1
 
 
+def _sanitize_argv(argv: list[str] | None) -> list[str]:
+    """Return CLI args without a duplicated program/module name (common on Windows)."""
+    if argv is None:
+        argv = sys.argv[1:]
+    else:
+        argv = list(argv)
+    drop = {
+        APP_NAME,
+        f"{APP_NAME}.exe",
+        f"{APP_NAME}.cmd",
+        f"{APP_NAME}.ps1",
+        "__main__.py",
+        "-m",
+        "mira.__main__",
+    }
+    # Strip leading junk that some launchers / frozen builds inject
+    while argv and (argv[0] in drop or argv[0].lower().endswith("\\mira.exe")
+                    or argv[0].lower().endswith("/mira.exe")
+                    or Path(argv[0]).name.lower() in drop):
+        argv = argv[1:]
+    return argv
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_sanitize_argv(argv))
     term = Terminal(
         use_color=not getattr(args, "no_color", False),
         quiet=getattr(args, "quiet", False),

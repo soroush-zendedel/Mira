@@ -218,3 +218,24 @@ After pulling this change on Windows, refresh the index once if warnings persist
 git add --renormalize .
 git status
 ```
+
+---
+
+## Uninstall
+
+**Windows**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\installers\uninstall.ps1
+# also delete config/cache/database:
+powershell -ExecutionPolicy Bypass -File .\installers\uninstall.ps1 -PurgeData
+```
+
+**Linux / macOS**
+
+```bash
+bash installers/uninstall.sh
+bash installers/uninstall.sh --purge-data
+```
+
+These remove application files and clean PATH entries added by the installer / `mira` path helper.
