@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "ch",
+  "provider": "docker",
+  "mirrors": [
+    {
+      "id": "ch-docker-placeholder",
+      "name": "Switzerland Docker (example)",
+      "url": "https://docker.mirror.ch",
+      "enabled": false,
+      "priority": 50
+    }
+  ]
+}

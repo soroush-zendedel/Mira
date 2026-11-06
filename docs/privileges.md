@@ -1,0 +1,70 @@
+# Privileges and elevated operations
+
+Mira runs as a normal user for almost everything:
+
+- `mira update`, `mira check`, `mira status`, `mira config`
+- `mira pypi set` with `--scope user` or `--scope project`
+- Listing and dry-run of all providers
+
+Only **system-level** configuration writes need elevation.
+
+## Docker Engine (`/etc/docker/daemon.json`)
+
+| Platform | How to elevate |
+|----------|----------------|
+| Linux | `sudo mira docker set` |
+| Linux (alternative) | `sudo -E mira docker set` if you need the same user env |
+| Windows | Docker Engine on Windows Server / Docker Desktop config is different; current provider targets Linux daemon.json. Run PowerShell **as Administrator** only if you later extend Windows Docker Desktop support. |
+
+After a successful `mira docker set`:
+
+```bash
+sudo systemctl restart docker
+# or
+sudo service docker restart
+```
+
+Mira **never** restarts Docker automatically. Confirm the change and restart yourself.
+
+Dry-run first:
+
+```bash
+mira docker set --dry-run
+sudo mira docker set
+```
+
+## Debian APT (`/etc/apt/sources.list.d/mira.sources`)
+
+```bash
+mira debian set --dry-run
+sudo mira debian set
+# optional metadata refresh (not done automatically):
+sudo apt-get update
+```
+
+## PyPI
+
+| Scope | Elevation |
+|-------|-----------|
+| `user` (default) | None |
+| `project` (venv / cwd) | None |
+| `system` | May need `sudo` on Linux |
+
+```bash
+mira pypi set --scope user
+mira pypi set --scope project
+sudo mira pypi set --scope system   # only if you really need system-wide pip
+```
+
+## Windows summary
+
+- Install Mira **without** Administrator (user install under `%LOCALAPPDATA%\Programs\Mira`).
+- Everyday commands: normal PowerShell or cmd.
+- Only if a future Windows system-wide provider needs it: open **PowerShell as Administrator** and run the specific `mira ... set` command there. Do **not** run the whole daily workflow elevated.
+
+## Safety rules (unchanged)
+
+- Health checks never write system files.
+- Backups are created before any write.
+- Unrelated settings are preserved.
+- Signature verification for APT is never disabled.

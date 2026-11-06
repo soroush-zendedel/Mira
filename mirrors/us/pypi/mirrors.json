@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "us",
+  "provider": "pypi",
+  "mirrors": [
+    {
+      "id": "pypi-official",
+      "name": "Official PyPI",
+      "url": "https://pypi.org/simple/",
+      "enabled": true,
+      "priority": 100
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "de",
+  "provider": "docker",
+  "mirrors": [
+    {
+      "id": "docker-mirror-example-de",
+      "name": "Example Docker Mirror DE",
+      "url": "https://mirror.gcr.io",
+      "enabled": true,
+      "priority": 70
+    }
+  ]
+}

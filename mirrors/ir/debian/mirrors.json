@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "country": "ir",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "famaserver-debian",
+      "name": "FamaServer Debian (official list)",
+      "url": "https://mirror.famaserver.com/debian",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "arvan-debian",
+      "name": "ArvanCloud Debian",
+      "url": "https://mirror.arvancloud.ir/debian",
+      "enabled": true,
+      "priority": 90
+    },
+    {
+      "id": "iut-debian",
+      "name": "IUT (Isfahan University of Technology)",
+      "url": "https://repo.iut.ac.ir/debian",
+      "enabled": true,
+      "priority": 88
+    },
+    {
+      "id": "iranserver-debian",
+      "name": "IranServer Debian",
+      "url": "https://mirror.iranserver.com/debian",
+      "enabled": true,
+      "priority": 85
+    },
+    {
+      "id": "linuxmirrors-debian",
+      "name": "LinuxMirrors.ir Debian",
+      "url": "https://linuxmirrors.ir/debian",
+      "enabled": true,
+      "priority": 80
+    },
+    {
+      "id": "shatel-debian",
+      "name": "Shatel Debian/Ubuntu family",
+      "url": "https://mirror.shatel.ir/debian",
+      "enabled": true,
+      "priority": 78
+    }
+  ]
+}

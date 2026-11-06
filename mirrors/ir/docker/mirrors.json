@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "country": "ir",
+  "provider": "docker",
+  "mirrors": [
+    {
+      "id": "arvan-docker",
+      "name": "ArvanCloud Docker Registry",
+      "url": "https://docker.arvancloud.ir",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "liara-docker",
+      "name": "Liara Docker Mirror",
+      "url": "https://docker-mirror.liara.ir",
+      "enabled": true,
+      "priority": 92
+    },
+    {
+      "id": "kernel-docker",
+      "name": "Kernel.ir Docker",
+      "url": "https://docker.kernel.ir",
+      "enabled": true,
+      "priority": 90
+    },
+    {
+      "id": "focker-docker",
+      "name": "Focker.ir",
+      "url": "https://focker.ir",
+      "enabled": true,
+      "priority": 88
+    },
+    {
+      "id": "mobinhost-docker",
+      "name": "MobinHost Docker",
+      "url": "https://docker.mobinhost.com",
+      "enabled": true,
+      "priority": 85
+    },
+    {
+      "id": "iranserver-docker",
+      "name": "IranServer Docker",
+      "url": "https://docker.iranserver.com",
+      "enabled": true,
+      "priority": 82
+    },
+    {
+      "id": "runflare-docker",
+      "name": "Runflare Docker Mirror",
+      "url": "https://mirror-docker.runflare.com",
+      "enabled": true,
+      "priority": 80
+    },
+    {
+      "id": "chabokan-docker",
+      "name": "Chabokan Docker",
+      "url": "https://mirror2.chabokan.net",
+      "enabled": true,
+      "priority": 78
+    },
+    {
+      "id": "hamdocker",
+      "name": "HamDocker (Hamravesh)",
+      "url": "https://hub.hamdocker.ir",
+      "enabled": true,
+      "priority": 75
+    }
+  ]
+}

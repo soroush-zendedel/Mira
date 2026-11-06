@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "country": "ir",
+  "provider": "pypi",
+  "mirrors": [
+    {
+      "id": "runflare-pypi",
+      "name": "Runflare PyPI",
+      "url": "https://mirror-pypi.runflare.com/simple/",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "chabokan-pypi",
+      "name": "Chabokan PyPI",
+      "url": "https://mirror2.chabokan.net/registry/pypi/simple/",
+      "enabled": true,
+      "priority": 90
+    },
+    {
+      "id": "hyperclouds-pypi",
+      "name": "Hyperclouds PyPI",
+      "url": "https://pypi.hyperclouds.ir/simple/",
+      "enabled": true,
+      "priority": 88
+    },
+    {
+      "id": "jamko-pypi",
+      "name": "Jamko PyPI",
+      "url": "https://pypi.jamko.ir/simple/",
+      "enabled": true,
+      "priority": 85
+    },
+    {
+      "id": "pardisco-pypi",
+      "name": "Pardisco PyPI",
+      "url": "https://mirrors.pardisco.co/pip/simple/",
+      "enabled": true,
+      "priority": 82
+    },
+    {
+      "id": "iranserver-pypi",
+      "name": "IranServer PyPI",
+      "url": "https://pypi.iranserver.com/repository/pypi/simple/",
+      "enabled": true,
+      "priority": 80
+    },
+    {
+      "id": "abrha-pypi",
+      "name": "Abrha (Parspack) PyPI",
+      "url": "https://mirror.abrha.net/repository/pypi/simple/",
+      "enabled": true,
+      "priority": 78
+    },
+    {
+      "id": "kargadan-pypi",
+      "name": "Kargadan PyPI",
+      "url": "https://mirror.kargadan.ir/nexus/repository/pypi-group/simple/",
+      "enabled": true,
+      "priority": 75
+    }
+  ]
+}

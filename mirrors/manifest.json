@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "database_version": "1.1.0",
+  "updated_at": "2026-11-07T00:00:00Z",
+  "countries": [
+    "ir",
+    "us",
+    "ch",
+    "de"
+  ],
+  "providers": [
+    "pypi",
+    "debian",
+    "docker"
+  ],
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {
+      "ir/pypi/mirrors.json": "d1949758c718ea4ea2f61f7c36283605a17820aad63f93efb9e8f16e6c75f273",
+      "ir/debian/mirrors.json": "85d92e7fe573a16301f0f26d3d632cc9b1d2a4c8977156d96841f82caf114a6e",
+      "ir/docker/mirrors.json": "2ba4f614bb5485c56ee813941f4cb6f563d5ccad50fb7132860b5117b7c21397",
+      "ch/debian/mirrors.json": "4785e61adc860fa63395d32648b1be0277a5d9085bcb4c048b58522211bd61db",
+      "ch/docker/mirrors.json": "7b87631abff70502927c35545de57f46d66190bac18e21f77467fa13bf1cd262",
+      "ch/pypi/mirrors.json": "1cc25ca4a1cb4dcb1b8a10848b2a0da44c44509900425487046172615987cbb3",
+      "de/debian/mirrors.json": "66ad4e7fc5c6eb193de42001910c8d02cdadba4f3f64e48da208c90c78decfb0",
+      "de/docker/mirrors.json": "caad7d12d45d74dfdd323b63c103824e723ebcb1a87922317380d967361e506a",
+      "de/pypi/mirrors.json": "dc593b5ba3c3bfb7b5a6f73c59370835cf37ab4aa220c275cca1cd7fd12072ed",
+      "us/debian/mirrors.json": "bfa0fd56f9bde088ce2b2b997af1d7900c81138582e48cb0c6e62eec99b76cf6",
+      "us/docker/mirrors.json": "d2645d4aadea3e9ec2bc51f17642567d9a5202adb311822559796cc7dacec3d1",
+      "us/pypi/mirrors.json": "02be2e3776cfaa191ab27cd45c4fcb3e211eee6abfdcd6471274fe67ab10adf1"
+    }
+  },
+  "trust": {
+    "method": "sha256-manifest",
+    "note": "Each mirror file has a matching sha256 in integrity.files. TLS protects transport; checksums protect content integrity after download.",
+    "signed_manifests_roadmap": "Future releases may embed an Ed25519/RSA public key and require a detached signature over the manifest."
+  }
+}

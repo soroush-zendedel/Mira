@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "ch",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "debian-ch",
+      "name": "Debian Switzerland",
+      "url": "https://ftp.ch.debian.org/debian",
+      "enabled": true,
+      "priority": 85
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "de",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "debian-de",
+      "name": "Debian FTP Germany",
+      "url": "https://ftp.de.debian.org/debian",
+      "enabled": true,
+      "priority": 90
+    }
+  ]
+}

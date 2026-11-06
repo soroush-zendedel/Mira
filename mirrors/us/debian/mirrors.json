@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "us",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "debian-official",
+      "name": "Debian Official",
+      "url": "https://deb.debian.org/debian",
+      "enabled": true,
+      "priority": 100
+    }
+  ]
+}

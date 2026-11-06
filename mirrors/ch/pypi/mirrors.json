@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "ch",
+  "provider": "pypi",
+  "mirrors": [
+    {
+      "id": "init-ch-pypi",
+      "name": "Init AG PyPI",
+      "url": "https://mirror.init7.net/pypi/simple/",
+      "enabled": true,
+      "priority": 80
+    }
+  ]
+}

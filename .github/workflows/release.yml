@@ -1,0 +1,175 @@
+# Build and publish Mira releases for Linux and Windows.
+# Trigger: push a version tag, e.g.  git tag v1.0.0 && git push origin v1.0.0
+#
+# Assets produced:
+#   - mira-linux-x86_64          (standalone binary, PyInstaller)
+#   - mira-windows-x86_64.exe    (standalone binary, PyInstaller)
+#   - mira_<ver>_amd64.deb       (Debian package)
+#   - mira-<ver>-source.zip      (source archive)
+#   - SHA256SUMS
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build standalone binary (Linux)
+        run: |
+          pyinstaller \
+            --onefile \
+            --name mira \
+            --paths src \
+            --hidden-import mira \
+            --hidden-import mira.cli \
+            --console \
+            src/mira/__main__.py
+          mkdir -p dist/out
+          cp dist/mira dist/out/mira-linux-x86_64
+          chmod +x dist/out/mira-linux-x86_64
+
+      - name: Build Debian package
+        run: |
+          bash scripts/build_deb.sh "${{ steps.ver.outputs.version }}"
+          cp packaging/out/*.deb dist/out/ || true
+
+      - name: Source zip
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          git archive --format=zip --prefix="Mira-${VER}/" -o "dist/out/mira-${VER}-source.zip" HEAD
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: dist/out/*
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build standalone binary (Windows)
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --onefile `
+            --name mira `
+            --paths src `
+            --hidden-import mira `
+            --hidden-import mira.cli `
+            --console `
+            src/mira/__main__.py
+          New-Item -ItemType Directory -Force -Path dist/out | Out-Null
+          Copy-Item dist/mira.exe dist/out/mira-windows-x86_64.exe
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: dist/out/*
+
+  publish:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for notes)
+        uses: actions/checkout@v4
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-artifacts
+          path: release-assets
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: release-assets
+
+      - name: Checksums
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Mira ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            ### Windows (standalone)
+            1. Download `mira-windows-x86_64.exe`
+            2. Rename to `mira.exe` and put it on your PATH, **or** run the PowerShell installer from source.
+
+            ### Linux (standalone)
+            ```bash
+            curl -fsSL -o mira https://github.com/soroush-zendedel/Mira/releases/latest/download/mira-linux-x86_64
+            chmod +x mira
+            sudo mv mira /usr/local/bin/mira   # or ~/.local/bin/mira
+            mira --version
+            mira update
+            ```
+
+            ### Debian / Ubuntu (.deb)
+            ```bash
+            curl -fsSL -O https://github.com/soroush-zendedel/Mira/releases/latest/download/mira_*_amd64.deb
+            sudo dpkg -i mira_*_amd64.deb
+            mira update
+            ```
+
+            ### From source (any OS, no pip)
+            See README — `installers/install.sh` / `installers/install.ps1`.
+
+            Verify downloads with `SHA256SUMS`.
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "de",
+  "provider": "pypi",
+  "mirrors": [
+    {
+      "id": "gwdg-pypi",
+      "name": "GWDG PyPI Mirror",
+      "url": "https://pypi.gwdg.de/simple/",
+      "enabled": true,
+      "priority": 85
+    }
+  ]
+}
