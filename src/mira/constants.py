@@ -1,9 +1,9 @@
-"""Application constants for Mira."""
+﻿"""Application constants for Mira."""
 
 from pathlib import Path
 
 APP_NAME = "mira"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 APP_DESCRIPTION = "Universal Software Repository Mirror Manager"
 
 # GitHub repository (official source)
