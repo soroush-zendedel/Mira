@@ -1,24 +1,24 @@
 # Bump version (SemVer), sync all version fields, print git tag commands.
 #
 # Usage (PowerShell):
-#   powershell -ExecutionPolicy Bypass -File .\scripts\make_release_tag.ps1 1.0.1
-#   .\scripts\make_release_tag.ps1 1.0.0
+# powershell -ExecutionPolicy Bypass -File .\scripts\make_release_tag.ps1 1.0.1
+# .\scripts\make_release_tag.ps1 1.0.0
 #
 # Rules (SemVer):
-#   MAJOR.MINOR.PATCH
-#   - PATCH: bugfixes only
-#   - MINOR: new features, backward compatible
-#   - MAJOR: breaking changes
+# MAJOR.MINOR.PATCH
+# - PATCH: bugfixes only
+# - MINOR: new features, backward compatible
+# - MAJOR: breaking changes
 
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
-    [string]$Version
+ [Parameter(Mandatory = $true, Position = 0)]
+ [string]$Version
 )
 
 $ErrorActionPreference = "Stop"
 
 if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$') {
-    Write-Error "Invalid SemVer: $Version (expected e.g. 1.0.0 or 1.0.0-rc.1)"
+ Write-Error "Invalid SemVer: $Version (expected e.g. 1.0.0 or 1.0.0-rc.1)"
 }
 
 $Tag = "v$Version"
@@ -52,10 +52,10 @@ Write-Host "Synced package metadata to $Version"
 Write-Host ""
 Write-Host "Version set to $Version"
 Write-Host "Next steps:"
-Write-Host "  git add -A"
-Write-Host "  git commit -m `"Release $Tag`""
-Write-Host "  git tag -a $Tag -m `"Mira $Tag`""
-Write-Host "  git push origin main"
-Write-Host "  git push origin $Tag"
+Write-Host " git add -A"
+Write-Host " git commit -m `"Release $Tag`""
+Write-Host " git tag -a $Tag -m `"Mira $Tag`""
+Write-Host " git push origin main"
+Write-Host " git push origin $Tag"
 Write-Host ""
 Write-Host "GitHub Actions will build binaries, .deb and attach them to the Release."

@@ -62,7 +62,6 @@ if (Test-Path $InstallRoot) {
     Write-Host ("Install root not found: " + $InstallRoot)
 }
 
-# Best-effort: remove mira.* under user profile bin locations
 $stray = @(
     (Join-Path $env:USERPROFILE "bin\mira.exe"),
     (Join-Path $env:USERPROFILE "bin\mira.cmd"),

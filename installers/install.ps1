@@ -58,7 +58,7 @@ function Ask-YesNo {
 
 function Configure-Path {
     if (Test-UserPathContains -Dir $BinDir) {
-        Write-Host ("User PATH already includes " + $BinDir + " — nothing to do.")
+        Write-Host ("User PATH already includes " + $BinDir + " - nothing to do.")
         return
     }
     Write-Host ""
@@ -95,10 +95,9 @@ function Install-FromRelease {
         return $false
     }
 
-    # cmd shim next to the exe (no nested PowerShell quoting issues)
     $cmdPath = Join-Path $BinDir "mira.cmd"
     $cmdLines = @(
-        "@echo off"
+        "@echo off",
         "\"%~dp0mira.exe\" %*"
     )
     Set-Content -Path $cmdPath -Value $cmdLines -Encoding ASCII
@@ -107,7 +106,6 @@ function Install-FromRelease {
     try {
         & $dest --version
     } catch {
-        # ignore version probe failures
     }
     return $true
 }
@@ -123,7 +121,6 @@ function Find-Python {
                 }
             }
         } catch {
-            # try next
         }
     }
     $paths = @(
@@ -172,8 +169,8 @@ function Install-FromSource {
 
     $launcher = Join-Path $BinDir "mira.cmd"
     $launcherLines = @(
-        "@echo off"
-        ("set PYTHONPATH=" + $InstallRoot + "\src;%PYTHONPATH%")
+        "@echo off",
+        ("set PYTHONPATH=" + $InstallRoot + "\src;%PYTHONPATH%"),
         ("`"" + $Python + "`" -m mira %*")
     )
     Set-Content -Path $launcher -Value $launcherLines -Encoding ASCII
@@ -182,7 +179,6 @@ function Install-FromSource {
     try {
         & $launcher --version
     } catch {
-        # ignore
     }
 }
 
