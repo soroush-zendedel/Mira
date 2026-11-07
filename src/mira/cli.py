@@ -87,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
         pc = ps.add_parser("check", help="Check mirrors")
         pc.add_argument("--refresh", action="store_true")
         ps.add_parser("current", help="Show current configuration")
+        ps.add_parser("status", help="Alias for current")
         pset = ps.add_parser("set", help="Select and apply best mirror")
         pset.add_argument("--dry-run", action="store_true")
         pset.add_argument("--scope", choices=["user", "project", "system"], default="user", help="PyPI scope")
@@ -217,7 +218,7 @@ def cmd_provider(
     if action == "check":
         return cmd_check(term, cfg, registry, provider_name, getattr(args, "refresh", False))
 
-    if action == "current":
+    if action in ("current", "status"):
         cur = prov.get_current()
         if cur:
             term.info(str(cur))
@@ -400,9 +401,25 @@ def cmd_reset(term: Terminal, cfg: Config, registry: MirrorRegistry, args: argpa
 
 def main(argv: list[str] | None = None) -> int:
     raw = _sanitize_argv(argv)
-    # Ephemeral docker: mira docker pull nginx  (not mira docker list/set/...)
-    _docker_managed = {"list", "check", "current", "set", "reset", "-h", "--help"}
-    if raw and raw[0] == "docker" and len(raw) > 1 and raw[1] not in _docker_managed:
+    # Ephemeral docker ONLY for real Docker CLI verbs (pull/run/...).
+    # Mira-managed subcommands (list/check/current/set/reset/status/...) stay in argparse.
+    _docker_cli_verbs = {
+        "pull", "push", "run", "create", "build", "buildx", "images", "image",
+        "login", "logout", "tag", "manifest", "save", "load", "import", "export",
+        "compose", "container", "volume", "network", "system", "info", "version",
+        "search", "history", "inspect", "rmi", "rm", "ps", "logs", "exec", "cp",
+        "start", "stop", "restart", "kill", "wait", "attach", "port", "top",
+        "stats", "diff", "commit", "rename", "update", "pause", "unpause",
+        "swarm", "node", "service", "stack", "secret", "config", "context",
+        "plugin", "trust", "builder", "buildx", "scout", "init",
+    }
+    if (
+        raw
+        and raw[0] == "docker"
+        and len(raw) > 1
+        and not raw[1].startswith("-")
+        and raw[1].lower() in _docker_cli_verbs
+    ):
         term = Terminal(use_color=True, quiet=False, verbose=False)
         cfg = Config()
         try:
