@@ -22,6 +22,15 @@ from mira.utils.platform import get_user_data_dir, is_windows
 from mira.utils.terminal import Terminal
 
 
+def _download_progress(term: Terminal | None):
+    if term is None:
+        return None
+    def _cb(received: int, total: int | None) -> None:
+        term.progress_bar(received, total, prefix="Downloading")
+    return _cb
+
+
+
 class AppUpgrader:
     """
     Upgrade Mira from the latest GitHub Release.
@@ -281,7 +290,11 @@ class AppUpgrader:
             self.term.info("(dry-run - download and replace skipped)")
             return remote or current
 
-        status, _, body, _ = fetch_url(url, timeout=120.0, max_size=80 * 1024 * 1024)
+        status, _, body, _ = fetch_url(
+            url, timeout=120.0, max_size=80 * 1024 * 1024,
+            progress=_download_progress(self.term),
+        )
+        self.term.progress_done()
         if status != 200:
             raise NetworkError(f"Download failed HTTP {status}")
         digest = sha256_bytes(body)

@@ -17,6 +17,16 @@ from mira.utils.terminal import Terminal
 from mira.utils.validation import validate_manifest, validate_mirrors_file
 
 
+def _download_progress(term: Terminal | None):
+    if term is None:
+        return None
+
+    def _cb(received: int, total: int | None) -> None:
+        term.progress_bar(received, total, prefix="Downloading")
+
+    return _cb
+
+
 class DatabaseUpdater:
     """Download and atomically install the official mirror database."""
 
@@ -35,7 +45,12 @@ class DatabaseUpdater:
             raise ValidationError(f"Invalid JSON from {url}: {e}") from e
 
     def _fetch_bytes(self, url: str) -> bytes:
-        status, _, body, _ = fetch_url(url)
+        status, _, body, _ = fetch_url(
+            url,
+            max_size=20 * 1024 * 1024,
+            progress=_download_progress(self.term),
+        )
+        self.term.progress_done()
         if status != 200:
             raise NetworkError(f"HTTP {status} fetching {url}")
         return body
