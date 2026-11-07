@@ -8,19 +8,35 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Optional
+from typing import Callable, Optional
 
 from mira.constants import DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT
 from mira.exceptions import NetworkError, ValidationError
+
+ProgressCallback = Callable[[int, Optional[int]], None]
 
 
 def validate_url(url: str, allowed_schemes: tuple[str, ...] = ("https",)) -> urllib.parse.ParseResult:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in allowed_schemes:
-        raise ValidationError(f"URL scheme not allowed: {parsed.scheme!r} (allowed: {allowed_schemes})")
+        raise ValidationError(
+            f"URL scheme not allowed: {parsed.scheme!r} (allowed: {allowed_schemes})"
+        )
     if not parsed.netloc:
         raise ValidationError(f"Invalid URL (missing host): {url}")
     return parsed
+
+
+def _parse_content_length(headers) -> Optional[int]:
+    try:
+        if not headers:
+            return None
+        raw = headers.get("Content-Length") or headers.get("content-length")
+        if raw is None:
+            return None
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def fetch_url(
@@ -32,10 +48,12 @@ def fetch_url(
     method: str = "GET",
     data: Optional[bytes] = None,
     max_size: int = 2 * 1024 * 1024,
+    progress: Optional[ProgressCallback] = None,
+    chunk_size: int = 64 * 1024,
 ) -> tuple[int, dict, bytes, float]:
     """
     Fetch a URL and return (status_code, headers_dict, body, latency_ms).
-    Raises NetworkError on failure.
+    Optional progress(bytes_received, total_or_None) is called during body download.
     """
     validate_url(url)
     req_headers = {
@@ -48,13 +66,37 @@ def fetch_url(
     req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
     start = time.perf_counter()
     try:
-        # Use a combined timeout (connect + read)
         with urllib.request.urlopen(req, timeout=timeout + read_timeout) as resp:
             status = getattr(resp, "status", None) or resp.getcode()
             hdrs = dict(resp.headers.items()) if resp.headers else {}
-            body = resp.read(max_size + 1)
-            if len(body) > max_size:
-                raise NetworkError(f"Response too large (> {max_size} bytes)")
+            total = _parse_content_length(resp.headers)
+            chunks: list[bytes] = []
+            received = 0
+            while True:
+                to_read = chunk_size
+                if max_size is not None:
+                    remaining = max_size + 1 - received
+                    if remaining <= 0:
+                        break
+                    to_read = min(to_read, remaining)
+                piece = resp.read(to_read)
+                if not piece:
+                    break
+                chunks.append(piece)
+                received += len(piece)
+                if progress is not None:
+                    try:
+                        progress(received, total)
+                    except Exception:
+                        pass
+                if max_size is not None and received > max_size:
+                    raise NetworkError(f"Response too large (> {max_size} bytes)")
+            body = b"".join(chunks)
+            if progress is not None:
+                try:
+                    progress(received, total if total is not None else received)
+                except Exception:
+                    pass
             latency_ms = (time.perf_counter() - start) * 1000.0
             return int(status), hdrs, body, latency_ms
     except urllib.error.HTTPError as e:
@@ -81,7 +123,6 @@ def head_or_get(
     timeout: float = DEFAULT_CONNECT_TIMEOUT,
     prefer_head: bool = True,
 ) -> tuple[int, dict, bytes, float]:
-    """Try HEAD first, fall back to GET if needed."""
     if prefer_head:
         try:
             status, headers, body, latency = fetch_url(url, timeout=timeout, method="HEAD")

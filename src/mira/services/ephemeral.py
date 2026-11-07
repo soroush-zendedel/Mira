@@ -40,7 +40,7 @@ def _select_best(cfg, registry: MirrorRegistry, provider_name: str, term) -> dic
     checker = MirrorChecker(cache=cache, max_workers=int(cfg.get("max_workers", 8)), term=term)
     if term and not getattr(term, "quiet", False):
         term.info(f"Selecting best {provider_name} mirror for this command only...")
-    results = checker.check_many(mirrors, prov.check_mirror, refresh=False)
+    results = checker.check_many(mirrors, prov.check_mirror, refresh=True)
     selector = MirrorSelector(strategy=cfg.get("strategy", "balanced"))
     best = selector.select(results)
     m = best["mirror"]
@@ -72,7 +72,7 @@ def _rank_mirrors(cfg, registry: MirrorRegistry, provider_name: str, term) -> li
     checker = MirrorChecker(cache=cache, max_workers=int(cfg.get("max_workers", 8)), term=term)
     if term and not getattr(term, "quiet", False):
         term.info(f"Selecting best {provider_name} mirror for this command only...")
-    results = checker.check_many(mirrors, prov.check_mirror, refresh=False)
+    results = checker.check_many(mirrors, prov.check_mirror, refresh=True)
     selector = MirrorSelector(strategy=cfg.get("strategy", "balanced"))
     ranked = [r for r in selector.rank(results) if r.get("score", 0) > 0]
     if not ranked:

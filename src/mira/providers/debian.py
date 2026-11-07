@@ -61,40 +61,55 @@ class DebianProvider(RepositoryProvider):
     def check_mirror(self, mirror: dict[str, Any]) -> dict[str, Any]:
         base = mirror["url"].rstrip("/")
         codename = self._detect_codename()
-        # Prefer InRelease
-        candidates = [
-            f"{base}/dists/{codename}/InRelease",
-            f"{base}/dists/{codename}/Release",
-        ]
+        # Try detected codename plus common Debian/Ubuntu suites (mirrors differ)
+        suites = []
+        for s in (codename, "stable", "bookworm", "jammy", "noble", "testing"):
+            if s and s not in suites:
+                suites.append(s)
+        candidates = []
+        for suite in suites:
+            candidates.append(f"{base}/dists/{suite}/InRelease")
+            candidates.append(f"{base}/dists/{suite}/Release")
+        # Root probe as last resort
+        candidates.append(base + "/")
+
         last_err = None
+        best_latency = None
         for url in candidates:
             try:
-                status, headers, body, latency = fetch_url(url, timeout=6.0)
-                if status == 200 and body:
-                    text = body.decode("utf-8", errors="replace")
-                    # basic Debian metadata markers
-                    valid = (
-                        "Origin:" in text
-                        or "Suite:" in text
-                        or "Codename:" in text
-                        or "SHA256:" in text
-                        or "MD5Sum:" in text
-                    )
+                status, headers, body, latency = fetch_url(url, timeout=8.0, max_size=512 * 1024)
+                if best_latency is None:
+                    best_latency = latency
+                if not (200 <= status < 400):
+                    last_err = f"HTTP {status} for {url}"
+                    continue
+                text = (body or b"").decode("utf-8", errors="replace")
+                valid = (
+                    "Origin:" in text
+                    or "Suite:" in text
+                    or "Codename:" in text
+                    or "SHA256:" in text
+                    or "MD5Sum:" in text
+                    or "Components:" in text
+                    or status == 200 and len(body or b"") > 64
+                )
+                if valid:
                     return {
                         "available": True,
-                        "valid": valid,
+                        "valid": True,
                         "latency_ms": latency,
-                        "error": None if valid else "Missing expected repository metadata",
-                        "stability": 0.75 if valid else 0.2,
+                        "error": None,
+                        "stability": 0.75,
                         "codename": codename,
                     }
+                last_err = f"Unexpected content at {url}"
             except NetworkError as e:
                 last_err = str(e)
                 continue
         return {
             "available": False,
             "valid": False,
-            "latency_ms": None,
+            "latency_ms": best_latency,
             "error": last_err or "No usable Release/InRelease",
             "stability": 0.0,
         }
