@@ -24,6 +24,8 @@ from mira.services.backup import BackupService
 from mira.utils.terminal import Terminal
 from mira.utils.path_setup import maybe_offer_path_setup
 from mira.services.uninstaller import uninstall as run_uninstall
+from mira.services.verify import verify_provider
+from mira.services.ephemeral import run_pip, run_apt, run_docker
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,6 +46,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_upd.add_argument("--force", action="store_true", help="Force re-download")
     sub.add_parser("upgrade", help="Upgrade Mira application from GitHub Releases")
     p_un = sub.add_parser("uninstall", help="Remove Mira completely from this user account")
+    p_pip = sub.add_parser("pip", help="Run pip via best mirror (ephemeral, no permanent config)")
+    p_pip.add_argument("pip_args", nargs=argparse.REMAINDER, help="Arguments passed to pip")
+    p_apt = sub.add_parser("apt", help="Run apt-get via best mirror (ephemeral, no permanent config)")
+    p_apt.add_argument("apt_args", nargs=argparse.REMAINDER, help="Arguments passed to apt-get")
     p_un.add_argument("--yes", "-y", action="store_true", help="Do not ask for confirmation")
     p_un.add_argument("--keep-data", action="store_true", help="Keep config/cache/database")
 
@@ -218,29 +224,65 @@ def cmd_provider(
         term.info(f"Checking {len(mirrors)} mirrors...")
         results = checker.check_many(mirrors, prov.check_mirror, refresh=True)
         selector = MirrorSelector(strategy=cfg.get("strategy", "balanced"))
-        try:
-            best = selector.select(results)
-        except NoHealthyMirrorError:
+        ranked = [r for r in selector.rank(results) if r.get("score", 0) > 0]
+        if not ranked:
             term.error("No healthy mirror found.")
             return 7
-        m = best["mirror"]
-        term.success(
-            f"Selected: {m.get('name')} ({m.get('id')}) "
-            f"score={best['score']} latency={best.get('latency_ms')}ms"
-        )
+
         dry = getattr(args, "dry_run", False)
         opts: dict[str, Any] = {"dry_run": dry}
         if provider_name == "pypi":
             opts["scope"] = getattr(args, "scope", "user")
-        try:
-            summary = prov.apply(m, **opts)
-            term.info(str(summary))
-            if dry:
-                term.info("(dry-run — no changes written)")
-            return 0
-        except MiraError as e:
-            term.error(str(e))
-            return e.code
+
+        if dry:
+            best = ranked[0]
+            m = best["mirror"]
+            term.success(
+                f"Selected: {m.get('name')} ({m.get('id')}) "
+                f"score={best['score']} latency={best.get('latency_ms')}ms"
+            )
+            try:
+                summary = prov.apply(m, **opts)
+                term.info(str(summary))
+                term.info("(dry-run - no changes written, verification skipped)")
+                return 0
+            except MiraError as e:
+                term.error(str(e))
+                return e.code
+
+        # Try mirrors in rank order; keep the first that applies AND verifies.
+        last_err = None
+        for idx, cand in enumerate(ranked, 1):
+            m = cand["mirror"]
+            term.info(
+                f"[{idx}/{len(ranked)}] Trying {m.get('name')} ({m.get('id')}) "
+                f"score={cand['score']} latency={cand.get('latency_ms')}ms"
+            )
+            try:
+                summary = prov.apply(m, **opts)
+                term.info(str(summary))
+            except MiraError as e:
+                term.warning(f"Apply failed: {e}")
+                last_err = str(e)
+                continue
+
+            term.info("Verifying mirror works for real operations...")
+            v = verify_provider(provider_name, m)
+            if v.get("ok"):
+                term.success(
+                    f"Verified OK via {v.get('method')} — using {m.get('name')} ({m.get('url')})"
+                )
+                return 0
+
+            detail = (v.get("detail") or v.get("error") or "unknown failure")[-300:]
+            term.warning(f"Verification failed: {detail}")
+            last_err = detail
+            term.info("Trying next mirror...")
+
+        term.error("All candidate mirrors failed verification.")
+        if last_err:
+            term.error(str(last_err)[:400])
+        return 7
 
     if action == "reset":
         dry = getattr(args, "dry_run", False)
@@ -300,8 +342,29 @@ def _sanitize_argv(argv: list[str] | None) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = _sanitize_argv(argv)
+    # Ephemeral docker: mira docker pull nginx  (not mira docker list/set/...)
+    _docker_managed = {"list", "check", "current", "set", "reset", "-h", "--help"}
+    if raw and raw[0] == "docker" and len(raw) > 1 and raw[1] not in _docker_managed:
+        term = Terminal(use_color=True, quiet=False, verbose=False)
+        cfg = Config()
+        try:
+            cfg.load()
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
+        registry = MirrorRegistry(cfg.database_dir)
+        try:
+            return run_docker(cfg, registry, raw[1:], term)
+        except NoHealthyMirrorError as e:
+            term.error(str(e) or "No healthy docker mirror")
+            return 7
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
+
     parser = build_parser()
-    args = parser.parse_args(_sanitize_argv(argv))
+    args = parser.parse_args(raw)
     term = Terminal(
         use_color=not getattr(args, "no_color", False),
         quiet=getattr(args, "quiet", False),
@@ -325,6 +388,19 @@ def main(argv: list[str] | None = None) -> int:
 
     registry = MirrorRegistry(cfg.database_dir)
 
+    # First-run: if database is missing, fetch it automatically (except for update/uninstall/help-only)
+    if (
+        cmd not in (None, "update", "uninstall", "upgrade")
+        and not registry.exists()
+    ):
+        term.info("Mirror database missing; running mira update once...")
+        try:
+            code = cmd_update(term, cfg, force=False)
+            if code != 0:
+                term.warning("Auto-update failed; run: mira update")
+        except Exception as e:
+            term.warning(f"Auto-update failed: {e}")
+
     if cmd is None:
         parser.print_help()
         return 0
@@ -334,6 +410,24 @@ def main(argv: list[str] | None = None) -> int:
             assume_yes=getattr(args, "yes", False),
             term=term,
         )
+    if cmd == "pip":
+        try:
+            return run_pip(cfg, registry, getattr(args, "pip_args", []) or [], term)
+        except NoHealthyMirrorError as e:
+            term.error(str(e) or "No healthy PyPI mirror")
+            return 7
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
+    if cmd == "apt":
+        try:
+            return run_apt(cfg, registry, getattr(args, "apt_args", []) or [], term)
+        except NoHealthyMirrorError as e:
+            term.error(str(e) or "No healthy Debian mirror")
+            return 7
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
     if cmd == "status":
         return cmd_status(term, cfg, registry)
     if cmd == "update":

@@ -126,10 +126,16 @@ class PyPIProvider(RepositoryProvider):
         if not cp.has_section("global"):
             cp.add_section("global")
         cp.set("global", "index-url", url)
+        # Trusted host helps mirrors with atypical TLS / corporate MITM
+        from urllib.parse import urlparse
+        host = urlparse(url).hostname
+        if host:
+            cp.set("global", "trusted-host", host)
         # do not touch extra-index-url
         with open(target, "w", encoding="utf-8") as f:
             cp.write(f)
         summary["status"] = "applied"
+        summary["trusted-host"] = host
         return summary
 
     def reset(self, *, dry_run: bool = False, scope: str = "user") -> dict[str, Any]:

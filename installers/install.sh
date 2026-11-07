@@ -228,4 +228,14 @@ fi
 configure_path
 
 echo ""
-echo "Done. Run: mira update && mira status"
+echo "Running: mira update"
+if command -v mira >/dev/null 2>&1; then
+  mira update || echo "Warning: mira update failed (you can run it later)."
+elif [[ -x "$LAUNCHER" ]]; then
+  "$LAUNCHER" update || echo "Warning: mira update failed (you can run it later)."
+else
+  echo "Warning: mira launcher not found; skip auto-update."
+fi
+
+echo ""
+echo "Done. Try: mira status"

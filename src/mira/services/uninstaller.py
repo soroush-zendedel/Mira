@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -197,6 +198,85 @@ def _rm_tree(path: Path) -> tuple[bool, str]:
         return False, f"failed to remove {path}: {e}"
 
 
+def _try_rename(path: Path) -> bool:
+    """Rename a locked Windows binary so a fresh install can replace it."""
+    try:
+        doomed = path.with_suffix(path.suffix + ".old")
+        if doomed.exists():
+            try:
+                doomed.unlink()
+            except OSError:
+                pass
+        path.rename(doomed)
+        return True
+    except OSError:
+        return False
+
+
+def _schedule_windows_cleanup(paths: list[Path]) -> Path | None:
+    """
+    Start a detached cmd script that waits until files unlock, then deletes them.
+    Required because Windows cannot delete the running mira.exe.
+    """
+    if not is_windows():
+        return None
+    targets: list[str] = []
+    seen: set[str] = set()
+    for pth in paths:
+        key = _normalize(pth)
+        if key not in seen:
+            seen.add(key)
+            targets.append(str(pth))
+    if not targets:
+        return None
+
+    tmp = Path(os.environ.get("TEMP") or os.environ.get("TMP") or ".")
+    script = tmp / f"mira_uninstall_{os.getpid()}.cmd"
+    lines = [
+        "@echo off",
+        "setlocal",
+        "rem Mira post-exit cleanup - delete locked install files",
+        "set /a n=0",
+        ":waitloop",
+        "set /a n+=1",
+        "if %n% GTR 60 goto done",
+        "timeout /t 1 /nobreak >nul",
+    ]
+    for t in targets:
+        lines.append(f'if exist "{t}" (')
+        lines.append(f'  del /f /q "{t}" 2>nul')
+        lines.append(f'  rd /s /q "{t}" 2>nul')
+        lines.append(")")
+    lines.append("set still=0")
+    for t in targets:
+        lines.append(f'if exist "{t}" set still=1')
+    lines.append("if %still%==1 goto waitloop")
+    lines.append(":done")
+    for t in targets:
+        lines.append(f'if exist "{t}" del /f /q "{t}" 2>nul')
+        lines.append(f'if exist "{t}" rd /s /q "{t}" 2>nul')
+    lines.append('del "%~f0" >nul 2>&1')
+    script.write_text("\r\n".join(lines) + "\r\n", encoding="ascii", errors="replace")
+
+    creationflags = 0
+    if hasattr(subprocess, "DETACHED_PROCESS"):
+        creationflags |= subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+    if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+        creationflags |= subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        creationflags |= subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+
+    subprocess.Popen(
+        ["cmd.exe", "/c", "start", "/min", "", str(script)],
+        close_fds=True,
+        creationflags=creationflags,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return script
+
+
 def uninstall(*, purge_data: bool = True, assume_yes: bool = False, term=None) -> int:
     """
     Remove Mira launchers, install tree, PATH entries, and (by default) config/data.
@@ -263,22 +343,30 @@ def uninstall(*, purge_data: bool = True, assume_yes: bool = False, term=None) -
 
     # 2) Launchers
     self_exe = Path(sys.executable).resolve() if getattr(sys, "frozen", False) else None
+    pending_windows: list[Path] = []
     for launcher in _launcher_candidates():
-        # On Windows, deleting the running frozen EXE may fail — try anyway
         success, msg = _rm_tree(launcher)
         if success:
             actions.append(msg)
+            continue
+        # Try rename (works for some locked Windows binaries)
+        if is_windows() and launcher.exists() and _try_rename(launcher):
+            actions.append(f"renamed locked file for deletion: {launcher}")
+            pending_windows.append(launcher.with_suffix(launcher.suffix + ".old"))
+            continue
+        if self_exe and _normalize(launcher) == _normalize(self_exe):
+            pending_windows.append(launcher)
+            actions.append(f"scheduled delete after exit: {launcher}")
         else:
-            if self_exe and _normalize(launcher) == _normalize(self_exe):
-                failures.append(f"{msg} (running binary; delete manually after exit if needed)")
+            if is_windows():
+                pending_windows.append(launcher)
+                actions.append(f"scheduled delete after exit: {launcher}")
             else:
                 failures.append(msg)
 
     # 3) Install roots (Programs\Mira, ~/.local/share/mira)
-    # Prefer shared helper so tests can patch _install_roots.
     install_trees: list[Path] = []
     for root in _install_roots():
-        # Skip pure bin directories (launchers already handled)
         if root.name in ("bin", "Bin"):
             continue
         install_trees.append(root)
@@ -288,7 +376,20 @@ def uninstall(*, purge_data: bool = True, assume_yes: bool = False, term=None) -
         if success:
             actions.append(msg)
         elif "not found" not in msg:
-            failures.append(msg)
+            if is_windows():
+                pending_windows.append(tree)
+                actions.append(f"scheduled delete after exit: {tree}")
+            else:
+                failures.append(msg)
+
+    # 3b) Windows: detach cleanup for anything still locked (running exe)
+    if is_windows() and pending_windows:
+        try:
+            script = _schedule_windows_cleanup(pending_windows)
+            if script:
+                actions.append(f"cleanup helper started: {script}")
+        except Exception as e:
+            failures.append(f"could not schedule cleanup helper: {e}")
 
     # 4) Config + data
     if purge_data:
@@ -313,8 +414,12 @@ def uninstall(*, purge_data: bool = True, assume_yes: bool = False, term=None) -
     if failures:
         for f in failures:
             warn(f)
-        warn("Some items could not be removed. Close all terminals using mira and retry.")
+        warn("Some items could not be removed immediately.")
+        if is_windows():
+            warn("If a cleanup helper was started, wait a few seconds and check the install folder is gone.")
         return 1
 
     ok("Uninstall finished. Open a new terminal so PATH changes apply.")
+    if is_windows() and pending_windows:
+        ok("Locked files will be removed automatically in a few seconds after this process exits.")
     return 0

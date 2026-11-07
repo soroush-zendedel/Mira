@@ -95,12 +95,11 @@ function Install-FromRelease {
         return $false
     }
 
+    # Write mira.cmd using single-quoted lines so PowerShell does not parse % or ~
     $cmdPath = Join-Path $BinDir "mira.cmd"
-    $cmdLines = @(
-        "@echo off",
-        "\"%~dp0mira.exe\" %*"
-    )
-    Set-Content -Path $cmdPath -Value $cmdLines -Encoding ASCII
+    $line1 = '@echo off'
+    $line2 = '"%~dp0mira.exe" %*'
+    Set-Content -Path $cmdPath -Value @($line1, $line2) -Encoding ASCII
 
     Write-Host ("Installed standalone: " + $dest)
     try {
@@ -167,13 +166,12 @@ function Install-FromSource {
         Copy-Item $verFile (Join-Path $InstallRoot "VERSION") -Force
     }
 
+    # Single-quoted fragments; concatenate with Python path (no % parsing issues)
     $launcher = Join-Path $BinDir "mira.cmd"
-    $launcherLines = @(
-        "@echo off",
-        ("set PYTHONPATH=" + $InstallRoot + "\src;%PYTHONPATH%"),
-        ("`"" + $Python + "`" -m mira %*")
-    )
-    Set-Content -Path $launcher -Value $launcherLines -Encoding ASCII
+    $line1 = '@echo off'
+    $line2 = 'set PYTHONPATH=' + $InstallRoot + '\src;%PYTHONPATH%'
+    $line3 = '"' + $Python + '" -m mira %*'
+    Set-Content -Path $launcher -Value @($line1, $line2, $line3) -Encoding ASCII
 
     Write-Host ("Installed source layout to " + $InstallRoot)
     try {
@@ -213,6 +211,24 @@ if ($FromRelease) {
 Configure-Path
 
 Write-Host ""
-Write-Host "Done. Open a new terminal if PATH was updated, then run:"
+Write-Host "Running: mira update"
+$miraCmd = Join-Path $BinDir "mira.cmd"
+$miraExe = Join-Path $BinDir "mira.exe"
+try {
+    if (Test-Path $miraExe) {
+        & $miraExe update
+    } elseif (Test-Path $miraCmd) {
+        & $miraCmd update
+    } else {
+        $mc = Get-Command mira -ErrorAction SilentlyContinue
+        if ($mc) { & mira update }
+        else { Write-Host "Warning: mira launcher not found; skip auto-update." }
+    }
+} catch {
+    Write-Host ("Warning: mira update failed: " + $_)
+}
+
+Write-Host ""
+Write-Host "Done. Open a new terminal if PATH was updated, then try:"
 Write-Host "  mira --version"
-Write-Host "  mira update"
+Write-Host "  mira status"
