@@ -39,7 +39,22 @@ powershell -ExecutionPolicy Bypass -File .\installers\install.ps1 -FromRelease
 curl -fsSL -o mira https://github.com/soroush-zendedel/Mira/releases/latest/download/mira-linux-x86_64
 chmod +x mira
 mkdir -p ~/.local/bin && mv mira ~/.local/bin/mira
-# ensure ~/.local/bin is on PATH
+
+# Add ~/.local/bin to PATH for this session
+export PATH="$HOME/.local/bin:$PATH"
+
+# Persist PATH for future terminals (bash/zsh)
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *)
+    if [ -n "${ZSH_VERSION:-}" ]; then
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+    else
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    fi
+    ;;
+esac
+
 mira --version
 mira update
 ```
