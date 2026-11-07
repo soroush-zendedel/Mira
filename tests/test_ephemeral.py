@@ -49,3 +49,23 @@ class EphemeralCliTest(unittest.TestCase):
         args2 = p.parse_args(["apt", "install", "nginx"])
         self.assertEqual(args2.command, "apt")
         self.assertEqual(args2.apt_args, ["install", "nginx"])
+
+
+class PipInjectTest(unittest.TestCase):
+    def test_index_after_subcommand(self):
+        from mira.services.ephemeral import _inject_pip_index_args
+        out = _inject_pip_index_args(["install", "django"], "https://m.example/simple", "m.example")
+        self.assertEqual(
+            out,
+            ["install", "--index-url", "https://m.example/simple", "--trusted-host", "m.example", "django"],
+        )
+
+    def test_respect_user_index(self):
+        from mira.services.ephemeral import _inject_pip_index_args
+        out = _inject_pip_index_args(
+            ["install", "--index-url", "https://other/simple", "x"],
+            "https://m.example/simple",
+            "m.example",
+        )
+        self.assertEqual(out.count("--index-url"), 1)
+        self.assertIn("https://other/simple", out)

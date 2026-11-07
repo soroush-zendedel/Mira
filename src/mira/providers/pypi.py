@@ -54,11 +54,42 @@ class PyPIProvider(RepositoryProvider):
             or text.strip().startswith("{")
             or status == 200
         )
+        # Official PyPI often answers on pypi.org/simple while files.pythonhosted.org is blocked
+        host = ""
+        try:
+            from urllib.parse import urlparse as _up
+            host = (_up(url).hostname or "").lower()
+        except Exception:
+            host = ""
+        if valid and host in {"pypi.org", "pypi.python.org"}:
+            try:
+                st2, _, _, lat2 = fetch_url(
+                    "https://files.pythonhosted.org/packages/source/p/pip/pip-24.0.tar.gz",
+                    timeout=5.0,
+                    max_size=64,
+                )
+                # Any TCP/HTTP response means DNS+route works; 404 is fine for reachability
+                if st2 <= 0:
+                    valid = False
+                    available = False
+                    error = "files.pythonhosted.org unreachable"
+                else:
+                    latency = max(latency or 0, lat2 or 0)
+                    error = None
+            except NetworkError as e:
+                valid = False
+                available = False
+                error = f"files.pythonhosted.org blocked: {e}"
+            else:
+                error = None if valid else f"HTTP {status} or unexpected content"
+        else:
+            error = None if valid else f"HTTP {status} or unexpected content"
+
         return {
             "available": available,
             "valid": bool(valid),
             "latency_ms": latency if available else None,
-            "error": None if valid else f"HTTP {status} or unexpected content",
+            "error": error,
             "stability": 0.7 if valid else 0.0,
         }
 

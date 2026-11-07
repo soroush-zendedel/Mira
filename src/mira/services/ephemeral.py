@@ -53,6 +53,33 @@ def _select_best(cfg, registry: MirrorRegistry, provider_name: str, term) -> dic
     return m
 
 
+def _rank_mirrors(cfg, registry: MirrorRegistry, provider_name: str, term) -> list[dict[str, Any]]:
+    """Return healthy mirrors best-first (full rank list)."""
+    if not registry.exists():
+        raise MiraError("Mirror database missing. Run 'mira update' first.", code=1)
+    backup = BackupService(cfg.backups_dir)
+    providers = {
+        "pypi": PyPIProvider(registry, backup),
+        "debian": DebianProvider(registry, backup),
+        "docker": DockerProvider(registry, backup),
+    }
+    prov = providers[provider_name]
+    countries = cfg.countries()
+    mirrors = prov.list_mirrors(countries=countries)
+    if not mirrors:
+        raise NoHealthyMirrorError("No mirrors available.")
+    cache = HealthCache(cfg.cache_dir, ttl=cfg.get("health_cache_ttl", 900))
+    checker = MirrorChecker(cache=cache, max_workers=int(cfg.get("max_workers", 8)), term=term)
+    if term and not getattr(term, "quiet", False):
+        term.info(f"Selecting best {provider_name} mirror for this command only...")
+    results = checker.check_many(mirrors, prov.check_mirror, refresh=False)
+    selector = MirrorSelector(strategy=cfg.get("strategy", "balanced"))
+    ranked = [r for r in selector.rank(results) if r.get("score", 0) > 0]
+    if not ranked:
+        raise NoHealthyMirrorError("No healthy mirror found.")
+    return ranked
+
+
 def _strip_double_dash(args: list[str]) -> list[str]:
     if args and args[0] == "--":
         return args[1:]
@@ -70,25 +97,73 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> int:
         return 130
 
 
-def run_pip(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
-    """mira pip install django  ->  pip with --index-url from best mirror."""
-    user_args = _strip_double_dash(list(user_args))
-    mirror = _select_best(cfg, registry, "pypi", term)
-    url = mirror["url"]
-    host = urlparse(url).hostname or ""
 
-    # Avoid overriding if the user already forced an index
-    joined = " ".join(user_args)
+def _inject_pip_index_args(user_args: list[str], url: str, host: str) -> list[str]:
+    """
+    Build pip args with --index-url AFTER the subcommand.
+    Correct:  pip install --index-url URL django
+    Wrong:    pip --index-url URL install django  (breaks some pip/wrappers)
+    """
+    args = list(user_args)
+    joined = " ".join(args)
     inject: list[str] = []
-    if "--index-url" not in joined and "-i" not in user_args:
+    if "--index-url" not in joined and "-i" not in args:
         inject.extend(["--index-url", url])
     if host and "--trusted-host" not in joined:
         inject.extend(["--trusted-host", host])
+    if not inject:
+        return args
 
-    cmd = [sys.executable, "-m", "pip", *inject, *user_args]
-    if term and getattr(term, "verbose", False):
-        term.info(" ".join(cmd))
-    return _run(cmd)
+    # Insert after first non-option token (the subcommand: install, download, ...)
+    i = 0
+    while i < len(args) and args[i].startswith("-"):
+        i += 1
+    if i < len(args):
+        i += 1  # after subcommand
+    return args[:i] + inject + args[i:]
+
+
+def run_pip(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
+    """mira pip install django  ->  pip with --index-url from best working mirror."""
+    user_args = _strip_double_dash(list(user_args))
+    if not user_args:
+        print("Usage: mira pip <pip args...>", file=sys.stderr)
+        return 2
+
+    ranked = _rank_mirrors(cfg, registry, "pypi", term)
+    last_code = 1
+
+    for idx, cand in enumerate(ranked, 1):
+        m = cand["mirror"]
+        url = m["url"]
+        host = urlparse(url).hostname or ""
+        if term and not getattr(term, "quiet", False):
+            term.info(
+                f"[{idx}/{len(ranked)}] Trying {m.get('name')} ({m.get('id')}) "
+                f"score={cand.get('score')} url={url}"
+            )
+
+        pip_args = _inject_pip_index_args(user_args, url, host)
+        cmd = [sys.executable, "-m", "pip", *pip_args]
+        if term and getattr(term, "verbose", False):
+            term.info(" ".join(cmd))
+
+        code = _run(cmd)
+        last_code = code
+        if code == 0:
+            if term and not getattr(term, "quiet", False):
+                term.success(f"Done using {m.get('name')}")
+            return 0
+
+        # Non-zero: try next mirror only for likely network / index failures.
+        # Package-not-found (no matching distribution) should not rotate forever.
+        if term:
+            term.warning(f"pip exited {code} with {m.get('id')}; trying next mirror if available...")
+
+    if term:
+        term.error("All candidate PyPI mirrors failed for this pip command.")
+    return last_code
+
 
 
 def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
