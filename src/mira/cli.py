@@ -23,6 +23,7 @@ from mira.providers.pypi import PyPIProvider
 from mira.services.backup import BackupService
 from mira.utils.terminal import Terminal
 from mira.utils.path_setup import maybe_offer_path_setup
+from mira.services.uninstaller import uninstall as run_uninstall
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_upd = sub.add_parser("update", help="Update local mirror database from GitHub")
     p_upd.add_argument("--force", action="store_true", help="Force re-download")
     sub.add_parser("upgrade", help="Upgrade Mira application from GitHub Releases")
+    p_un = sub.add_parser("uninstall", help="Remove Mira completely from this user account")
+    p_un.add_argument("--yes", "-y", action="store_true", help="Do not ask for confirmation")
+    p_un.add_argument("--keep-data", action="store_true", help="Keep config/cache/database")
 
     # check
     p_check = sub.add_parser("check", help="Check mirror health")
@@ -310,18 +314,26 @@ def main(argv: list[str] | None = None) -> int:
         term.error(str(e))
         return e.code
 
-    # Offer permanent PATH setup when `mira` is not on PATH (interactive only)
-    try:
-        maybe_offer_path_setup(cfg, term)
-    except Exception:
-        pass
+    cmd = args.command
+
+    # Do not offer PATH install when the user is uninstalling
+    if cmd != "uninstall":
+        try:
+            maybe_offer_path_setup(cfg, term)
+        except Exception:
+            pass
 
     registry = MirrorRegistry(cfg.database_dir)
-    cmd = args.command
 
     if cmd is None:
         parser.print_help()
         return 0
+    if cmd == "uninstall":
+        return run_uninstall(
+            purge_data=not getattr(args, "keep_data", False),
+            assume_yes=getattr(args, "yes", False),
+            term=term,
+        )
     if cmd == "status":
         return cmd_status(term, cfg, registry)
     if cmd == "update":
