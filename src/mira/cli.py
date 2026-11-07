@@ -496,8 +496,31 @@ def main(argv: list[str] | None = None) -> int:
             term.error(str(e))
             return e.code
     if cmd == "apt":
+        apt_args = list(getattr(args, "apt_args", []) or [])
+        if apt_args and apt_args[0] == "--":
+            apt_args = apt_args[1:]
+        # Only real apt-get verbs go ephemeral; Mira meta-commands stay in Mira.
+        _apt_cli_verbs = {
+            "install", "update", "upgrade", "dist-upgrade", "full-upgrade",
+            "remove", "purge", "autoremove", "reinstall", "download", "source",
+            "build-dep", "check", "clean", "autoclean", "policy",
+            "search", "show", "list", "satisfy",
+        }
+        if not apt_args:
+            term.error("Usage: mira apt <install|update|upgrade|remove|...> [packages...]")
+            term.info("For Mira mirror status use: mira debian status")
+            return 2
+        verb = apt_args[0].lower()
+        if verb in {"status", "current"}:
+            # Alias to debian provider status
+            return cmd_provider(term, cfg, registry, "debian", "status", args)
+        if verb not in _apt_cli_verbs:
+            term.error(f"Unknown apt action for Mira: {apt_args[0]}")
+            term.info("Ephemeral apt supports: " + ", ".join(sorted(_apt_cli_verbs)))
+            term.info("Mira debian commands: mira debian list|check|status|set|reset")
+            return 2
         try:
-            return run_apt(cfg, registry, getattr(args, "apt_args", []) or [], term)
+            return run_apt(cfg, registry, apt_args, term)
         except NoHealthyMirrorError as e:
             term.error(str(e) or "No healthy Debian mirror")
             return 7
