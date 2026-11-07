@@ -159,36 +159,46 @@ class AppUpgrader:
             raise UpdateError("Cannot locate mira executable to replace.")
 
         self.term.info(f"Replacing binary: {target}")
-        # Write to temp next to target then replace
-        tmp = target.with_name(target.name + ".new")
+
+        # Always stage in a user-writable temp file first (handles /usr/local/bin).
+        fd, tmp_name = tempfile.mkstemp(prefix="mira_upgrade_", suffix=".bin")
+        tmp = Path(tmp_name)
         try:
-            tmp.write_bytes(data)
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
             if not is_windows():
                 tmp.chmod(tmp.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         except OSError as e:
-            raise UpdateError(f"Cannot write new binary: {e}") from e
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise UpdateError(f"Cannot write staged binary: {e}") from e
 
         if is_windows():
-            # Running exe may be locked — stage rename + schedule
             old = target.with_name(target.name + ".old")
             try:
                 if old.exists():
                     old.unlink()
                 if target.exists():
                     target.rename(old)
-                tmp.rename(target)
+                shutil.copy2(tmp, target)
+                try:
+                    tmp.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 try:
                     old.unlink(missing_ok=True)
                 except OSError:
                     pass
             except OSError:
-                # Delayed replace via cmd after exit
                 script = Path(os.environ.get("TEMP", ".")) / f"mira_upgrade_{os.getpid()}.cmd"
                 lines = [
                     "@echo off",
                     "timeout /t 2 /nobreak >nul",
-                    f'move /y "{tmp}" "{target}"',
+                    f'copy /y "{tmp}" "{target}"',
                     f'if exist "{old}" del /f /q "{old}"',
+                    f'del /f /q "{tmp}"',
                     'del "%~f0"',
                 ]
                 script.write_text("\r\n".join(lines) + "\r\n", encoding="ascii")
@@ -202,23 +212,33 @@ class AppUpgrader:
                 self.term.warning("Binary is locked; replacement scheduled after process exit.")
                 return
         else:
-            # Atomic-ish replace on Unix
-            try:
-                os.replace(str(tmp), str(target))
-            except OSError as e:
-                # /usr/local/bin may need sudo
-                if not os.access(target.parent, os.W_OK):
-                    self.term.info("Write permission denied; trying sudo...")
-                    r = subprocess.run(
-                        ["sudo", "mv", "-f", str(tmp), str(target)],
-                        check=False,
+            replaced = False
+            # 1) Try direct replace when user owns the path
+            if os.access(str(target.parent), os.W_OK):
+                try:
+                    os.replace(str(tmp), str(target))
+                    replaced = True
+                except OSError:
+                    replaced = False
+            # 2) Fall back to sudo (common for /usr/local/bin)
+            if not replaced:
+                self.term.info("Elevated permission required; using sudo to install the new binary...")
+                # install -m 755 preserves exec bit and works across filesystems
+                r = subprocess.run(
+                    ["sudo", "install", "-m", "755", str(tmp), str(target)],
+                    check=False,
+                )
+                try:
+                    tmp.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                if r.returncode != 0:
+                    raise UpdateError(
+                        f"Failed to replace {target}.\n"
+                        f"Try manually:\n"
+                        f"  sudo install -m 755 /tmp/mira-new {target}\n"
+                        f"Or reinstall to a user path: ~/.local/bin/mira"
                     )
-                    if r.returncode != 0:
-                        raise UpdateError(
-                            f"Failed to replace {target}. Re-run with sudo or install to a user path."
-                        ) from e
-                else:
-                    raise UpdateError(f"Failed to replace binary: {e}") from e
 
         self.term.success(f"Binary upgraded to {remote}.")
         self.term.info("Run `mira --version` again (new process) to confirm.")
