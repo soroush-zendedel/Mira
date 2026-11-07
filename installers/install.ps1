@@ -57,17 +57,10 @@ function Ask-YesNo {
 }
 
 function Configure-Path {
+    # Always add to user PATH (no prompt)
+    $env:Path = $BinDir + ";" + $env:Path
     if (Test-UserPathContains -Dir $BinDir) {
         Write-Host ("User PATH already includes " + $BinDir + " - nothing to do.")
-        return
-    }
-    Write-Host ""
-    Write-Host ("Launcher directory: " + $BinDir)
-    Write-Host "This directory is not on your user PATH."
-    Write-Host ""
-    if (-not (Ask-YesNo -Prompt "Add this directory to your user PATH?" -DefaultYes $true)) {
-        Write-Host ("Skipped. You can run Mira via full path under " + $BinDir)
-        Write-Host ("Or add " + $BinDir + " to PATH later from System Properties.")
         return
     }
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -76,7 +69,6 @@ function Configure-Path {
     }
     $newUserPath = $BinDir + ";" + $userPath
     [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
-    $env:Path = $BinDir + ";" + $env:Path
     Write-Host ("Added to user PATH: " + $BinDir)
     Write-Host "Open a NEW terminal so other apps see the updated PATH."
 }

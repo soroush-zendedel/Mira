@@ -84,21 +84,11 @@ ask_yes_no() {
 }
 
 configure_path() {
+  # Always put ~/.local/bin on PATH (session + shell profile). No prompt.
+  export PATH="$BIN_DIR:$PATH"
+
   if path_contains_bin; then
-    echo "PATH already includes $BIN_DIR — nothing to do."
-    return 0
-  fi
-
-  echo ""
-  echo "The launcher was installed to: $LAUNCHER"
-  echo "This directory is not on your current PATH: $BIN_DIR"
-  echo ""
-
-  if ! ask_yes_no "Add $BIN_DIR to PATH in your shell profile?"; then
-    echo "Skipped. You can run Mira via: $LAUNCHER"
-    echo "Or add this to your shell profile later:"
-    echo "  export PATH=\"$BIN_DIR:\$PATH\""
-    return 0
+    : # already present in this session after export above may still need profile
   fi
 
   local rc
@@ -106,25 +96,21 @@ configure_path() {
   mkdir -p "$(dirname "$rc")"
   local marker="# Mira CLI (added by installer)"
   local line="export PATH=\"$BIN_DIR:\$PATH\""
-
   if [[ "$(basename "$rc")" == "config.fish" ]]; then
     line="fish_add_path $BIN_DIR"
   fi
 
   if [[ -f "$rc" ]] && grep -qF "$BIN_DIR" "$rc" 2>/dev/null; then
-    echo "Profile already mentions $BIN_DIR ($rc)."
+    echo "PATH already configured in: $rc"
   else
     {
       echo ""
       echo "$marker"
       echo "$line"
     } >> "$rc"
-    echo "Added PATH entry to: $rc"
+    echo "Added $BIN_DIR to PATH in: $rc"
   fi
-
-  # Also apply to current session
-  export PATH="$BIN_DIR:$PATH"
-  echo "PATH updated for this session. Open a new terminal for other sessions."
+  echo "Current session PATH updated. New terminals will pick it up from your profile."
 }
 
 install_from_release() {

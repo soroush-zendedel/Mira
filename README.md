@@ -36,28 +36,14 @@ powershell -ExecutionPolicy Bypass -File .\installers\install.ps1 -FromRelease
 ### Linux — standalone binary
 
 ```bash
-curl -fsSL -o mira https://github.com/soroush-zendedel/Mira/releases/latest/download/mira-linux-x86_64
-chmod +x mira
-mkdir -p ~/.local/bin && mv mira ~/.local/bin/mira
-
-# Add ~/.local/bin to PATH for this session
-export PATH="$HOME/.local/bin:$PATH"
-
-# Persist PATH for future terminals (bash/zsh)
-case ":$PATH:" in
-  *":$HOME/.local/bin:"*) ;;
-  *)
-    if [ -n "${ZSH_VERSION:-}" ]; then
-      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-    else
-      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-    fi
-    ;;
-esac
-
+curl -fsSL -o /tmp/mira https://github.com/soroush-zendedel/Mira/releases/latest/download/mira-linux-x86_64
+chmod +x /tmp/mira
+sudo mv /tmp/mira /usr/local/bin/mira
 mira --version
 mira update
 ```
+
+`/usr/local/bin` is on PATH by default. No extra PATH setup needed.
 
 Or:
 
@@ -67,14 +53,29 @@ bash installers/install.sh --from-release
 
 ### Debian / Ubuntu — `.deb` package
 
+Wildcards do **not** work inside the download URL. Resolve the latest asset name first:
+
 ```bash
-# replace VERSION with the release version, or use the exact asset name from the Releases page
-curl -fsSL -O https://github.com/soroush-zendedel/Mira/releases/latest/download/mira_1.0.0_amd64.deb
-sudo dpkg -i mira_*_amd64.deb
+# 1) Find the exact .deb name from the latest release
+DEB_URL=$(curl -fsSL https://api.github.com/repos/soroush-zendedel/Mira/releases/latest \
+  | grep -oE 'https://[^"]+/mira_[0-9.]+_amd64\.deb' | head -n1)
+
+# 2) Download and install
+curl -fsSL -o /tmp/mira.deb "$DEB_URL"
+sudo dpkg -i /tmp/mira.deb
+mira --version
 mira update
 ```
 
-Requires `python3 >= 3.10` on the system.
+Or with a known version (example):
+
+```bash
+curl -fsSL -o /tmp/mira.deb \
+  https://github.com/soroush-zendedel/Mira/releases/latest/download/mira_1.0.6_amd64.deb
+sudo dpkg -i /tmp/mira.deb
+```
+
+Requires `python3 >= 3.10`. The package installs to `/usr/bin/mira` (already on PATH).
 
 ### From source (no pip, works offline after clone)
 

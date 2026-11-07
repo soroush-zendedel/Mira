@@ -151,18 +151,18 @@ jobs:
 
             ### Linux (standalone)
             ```bash
-            curl -fsSL -o mira https://github.com/soroush-zendedel/Mira/releases/latest/download/mira-linux-x86_64
-            chmod +x mira
-            sudo mv mira /usr/local/bin/mira   # or ~/.local/bin/mira
-            mira --version
-            mira update
+            curl -fsSL -o /tmp/mira https://github.com/soroush-zendedel/Mira/releases/latest/download/mira-linux-x86_64
+            chmod +x /tmp/mira
+            sudo mv /tmp/mira /usr/local/bin/mira
+            mira --version && mira update
             ```
 
             ### Debian / Ubuntu (.deb)
             ```bash
-            curl -fsSL -O https://github.com/soroush-zendedel/Mira/releases/latest/download/mira_*_amd64.deb
-            sudo dpkg -i mira_*_amd64.deb
-            mira update
+            DEB_URL=$(curl -fsSL https://api.github.com/repos/soroush-zendedel/Mira/releases/latest | grep -oE 'https://[^"]+/mira_[0-9.]+_amd64\.deb' | head -n1)
+            curl -fsSL -o /tmp/mira.deb "$DEB_URL"
+            sudo dpkg -i /tmp/mira.deb
+            mira --version && mira update
             ```
 
             ### From source (any OS, no pip)

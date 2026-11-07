@@ -251,14 +251,8 @@ def maybe_offer_path_setup(config, term) -> None:
     term.print()
     term.warning("Mira is not available as the `mira` command on your PATH.")
     term.info(f"Will install a launcher into: {bin_dir}")
-    try:
-        reply = input(
-            "Add Mira to PATH permanently so you can run `mira` from any terminal? [Y/n] "
-        ).strip()
-    except (EOFError, KeyboardInterrupt):
-        term.print()
-        return
-
+    # Auto-configure PATH (no interactive prompt)
+    reply = "y"
     if reply == "" or reply.lower() in ("y", "yes"):
         try:
             launcher = ensure_launcher(bin_dir)
