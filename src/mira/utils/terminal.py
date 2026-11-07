@@ -118,6 +118,15 @@ class Terminal:
                 row.append("")
             print(fmt.format(*row[: len(cols)]))
 
+
+    def status_line(self, ok: bool, name: str, detail: str = "") -> None:
+        """Print a single check result line: [OK]/[X] name detail."""
+        if self.quiet:
+            return
+        mark = self.ok("OK") if ok else self.fail("X")
+        detail_s = f"  {detail}" if detail else ""
+        print(f"{mark} {name}{detail_s}")
+
     @staticmethod
     def format_bytes(n: int) -> str:
         units = ["B", "KB", "MB", "GB"]
