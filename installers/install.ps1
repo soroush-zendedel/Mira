@@ -156,6 +156,14 @@ function Install-FromSource {
     }
     Write-Host ("Installing from source: " + $RepoRoot)
 
+    # Remove stale release binary from a previous install (avoids PYI PKG errors)
+    foreach ($stale in @("mira.exe", "mira.cmd")) {
+        $sp = Join-Path $BinDir $stale
+        if (Test-Path $sp) {
+            Remove-Item -Force $sp -ErrorAction SilentlyContinue
+        }
+    }
+
     $destSrc = Join-Path $InstallRoot "src"
     if (Test-Path $destSrc) {
         Remove-Item -Recurse -Force $destSrc
@@ -214,18 +222,28 @@ Write-Host ""
 Write-Host "Running: mira update"
 $miraCmd = Join-Path $BinDir "mira.cmd"
 $miraExe = Join-Path $BinDir "mira.exe"
+# Prefer mira.cmd (source install). Only use mira.exe when cmd is absent (standalone release).
+$ran = $false
 try {
-    if (Test-Path $miraExe) {
-        & $miraExe update
-    } elseif (Test-Path $miraCmd) {
+    if (Test-Path $miraCmd) {
         & $miraCmd update
+        $ran = $true
+    } elseif (Test-Path $miraExe) {
+        & $miraExe update
+        $ran = $true
     } else {
         $mc = Get-Command mira -ErrorAction SilentlyContinue
-        if ($mc) { & mira update }
-        else { Write-Host "Warning: mira launcher not found; skip auto-update." }
+        if ($mc) {
+            & mira update
+            $ran = $true
+        }
     }
 } catch {
     Write-Host ("Warning: mira update failed: " + $_)
+    $ran = $true
+}
+if (-not $ran) {
+    Write-Host "Warning: mira launcher not found; skip auto-update."
 }
 
 Write-Host ""

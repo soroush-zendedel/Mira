@@ -174,6 +174,8 @@ install_from_source_tree() {
   fi
 
   rm -rf "$INSTALL_ROOT/src"
+  # Remove stale standalone binary if present
+  rm -f "$LAUNCHER" "$BIN_DIR/mira.bin" 2>/dev/null || true
   mkdir -p "$INSTALL_ROOT/src"
   cp -a "$REPO_ROOT/src/mira" "$INSTALL_ROOT/src/"
   if [[ -d "$REPO_ROOT/mirrors" ]]; then
