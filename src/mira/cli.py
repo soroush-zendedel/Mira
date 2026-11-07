@@ -50,6 +50,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_pip.add_argument("pip_args", nargs=argparse.REMAINDER, help="Arguments passed to pip")
     p_apt = sub.add_parser("apt", help="Run apt-get via best mirror (ephemeral, no permanent config)")
     p_apt.add_argument("apt_args", nargs=argparse.REMAINDER, help="Arguments passed to apt-get")
+    p_reset = sub.add_parser(
+        "reset",
+        help="Restore all providers (pypi/debian/docker) to default upstream configuration",
+    )
+    p_reset.add_argument("--dry-run", action="store_true", help="Show what would be changed")
+    p_reset.add_argument(
+        "--provider",
+        choices=["pypi", "debian", "docker", "all"],
+        default="all",
+        help="Limit reset to one provider (default: all)",
+    )
     p_un.add_argument("--yes", "-y", action="store_true", help="Do not ask for confirmation")
     p_un.add_argument("--keep-data", action="store_true", help="Keep config/cache/database")
 
@@ -341,6 +352,52 @@ def _sanitize_argv(argv: list[str] | None) -> list[str]:
     return argv
 
 
+def cmd_reset(term: Terminal, cfg: Config, registry: MirrorRegistry, args: argparse.Namespace) -> int:
+    """Reset one or all providers back to default upstream configuration."""
+    dry = getattr(args, "dry_run", False)
+    which = getattr(args, "provider", "all") or "all"
+    targets = ["pypi", "debian", "docker"] if which == "all" else [which]
+
+    backup = BackupService(cfg.backups_dir)
+    providers = _make_providers(cfg, registry, backup)
+    term.header("MIRA RESET")
+    if dry:
+        term.info("(dry-run - no changes will be written)")
+
+    any_error = False
+    for name in targets:
+        prov = providers[name]
+        term.info(f"Resetting {name}...")
+        try:
+            # PyPI: reset user scope (primary); also try project if present
+            if name == "pypi":
+                summary = prov.reset(dry_run=dry, scope="user")
+                term.info(f"  pypi/user: {summary}")
+                try:
+                    summary_p = prov.reset(dry_run=dry, scope="project")
+                    if summary_p.get("status") not in (None, "nothing to reset", "no index-url found"):
+                        term.info(f"  pypi/project: {summary_p}")
+                except Exception:
+                    pass
+            else:
+                summary = prov.reset(dry_run=dry)
+                term.info(f"  {name}: {summary}")
+            term.success(f"{name}: restored to default upstream")
+        except MiraError as e:
+            any_error = True
+            term.error(f"{name}: {e}")
+        except Exception as e:
+            any_error = True
+            term.error(f"{name}: {e}")
+
+    if any_error:
+        term.warning("Finished with some errors.")
+        return 1
+    term.success("All requested providers reset to default configuration.")
+    return 0
+
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = _sanitize_argv(argv)
     # Ephemeral docker: mira docker pull nginx  (not mira docker list/set/...)
@@ -404,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
     if cmd is None:
         parser.print_help()
         return 0
+    if cmd == "reset":
+        return cmd_reset(term, cfg, registry, args)
     if cmd == "uninstall":
         return run_uninstall(
             purge_data=not getattr(args, "keep_data", False),
