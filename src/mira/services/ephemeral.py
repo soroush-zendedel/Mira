@@ -133,6 +133,18 @@ def run_pip(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
         print("Usage: mira pip <pip args...>", file=sys.stderr)
         return 2
 
+    if any(
+        arg == "--no-index"
+        or arg in ("--index-url", "-i")
+        or arg.startswith("--index-url=")
+        or arg.startswith("-ihttps://")
+        for arg in user_args
+    ):
+        return _run([sys.executable, "-m", "pip", *user_args])
+    verb = next((arg.lower() for arg in user_args if not arg.startswith("-")), "")
+    if verb not in {"install", "download", "wheel", "index"}:
+        return _run([sys.executable, "-m", "pip", *user_args])
+
     ranked = _rank_mirrors(cfg, registry, "pypi", term)
     last_code = 1
 
@@ -171,7 +183,7 @@ def run_pip(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
 def _inject_npm_registry_args(user_args: list[str], url: str) -> list[str]:
     """Pass the chosen npm registry to this invocation without editing npmrc."""
     args = list(user_args)
-    if any(a in ("--registry", "-r") or a.startswith("--registry=") for a in args):
+    if any(a == "--registry" or a.startswith("--registry=") for a in args):
         return args
     return ["--registry", url, *args]
 
@@ -188,14 +200,49 @@ def run_npm(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
         npm = shutil.which("npm") or "npm"
         return _run([npm, *user_args])
 
-    args = user_args
-    if not any(a in ("--registry", "-r") or a.startswith("--registry=") for a in args):
-        mirror = _select_best(cfg, registry, "npm", term)
-        args = _inject_npm_registry_args(args, mirror["url"])
-        if term and not getattr(term, "quiet", False):
-            term.info(f"Using npm registry {mirror['url']} for this command only")
-
     npm = shutil.which("npm") or "npm"
+    if any(a == "--registry" or a.startswith("--registry=") for a in user_args):
+        return _run([npm, *user_args])
+
+    command_verbs = {
+        "install", "i", "ci", "add", "update", "up", "uninstall", "remove", "rm",
+        "view", "info", "show", "v", "s", "ping", "search", "outdated", "audit",
+        "pack", "exec", "x", "publish", "login", "logout", "whoami", "config",
+        "run", "test", "start", "stop", "restart", "list", "ls", "ll",
+    }
+    verb = next((arg.lower() for arg in user_args if arg.lower() in command_verbs), "")
+    mirror_verbs = {
+        "view", "info", "show", "v", "s", "ping", "search", "outdated", "audit",
+        "install", "i", "ci", "add", "update", "up", "pack", "exec", "x",
+    }
+    if verb not in mirror_verbs:
+        return _run([npm, *user_args])
+    # npm package operations are idempotent enough to retry after a registry
+    # failure; publish and commands that execute arbitrary scripts are excluded.
+    retryable_verbs = {
+        "view", "info", "show", "v", "s", "ping", "search", "outdated",
+        "install", "i", "ci", "add", "update", "up", "pack",
+    }
+    if verb in retryable_verbs:
+        ranked = _rank_mirrors(cfg, registry, "npm", term)
+        last_code = 1
+        for idx, candidate in enumerate(ranked, 1):
+            mirror = candidate["mirror"]
+            args = _inject_npm_registry_args(user_args, mirror["url"])
+            if term and not getattr(term, "quiet", False):
+                term.info(f"[{idx}/{len(ranked)}] Trying npm registry {mirror['url']}")
+            cmd = [npm, *args]
+            if term and getattr(term, "verbose", False):
+                term.info(" ".join(cmd))
+            last_code = _run(cmd)
+            if last_code == 0:
+                return 0
+            if term:
+                term.warning(f"npm exited {last_code} with {mirror.get('id')}; trying the next healthy mirror")
+        return last_code
+
+    mirror = _select_best(cfg, registry, "npm", term)
+    args = _inject_npm_registry_args(user_args, mirror["url"])
     if term and getattr(term, "verbose", False):
         term.info(" ".join([npm, *args]))
     return _run([npm, *args])
@@ -212,56 +259,75 @@ def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
         print("Usage: mira apt <apt-get args...>", file=sys.stderr)
         return 2
 
-    mirror = _select_best(cfg, registry, "debian", term)
-    url = mirror["url"].rstrip("/")
     prov = DebianProvider(registry)
     codename = prov._detect_codename()
-
-    # Detect Ubuntu vs Debian components lightly
-    is_ubuntu = codename in {
-        "focal", "jammy", "noble", "bionic", "xenial", "mantic", "lunar",
-    }
-    # Mirror paths often end with /debian or /ubuntu
-    components = "main restricted universe multiverse" if is_ubuntu else "main contrib non-free non-free-firmware"
-    line = f"deb {url} {codename} {components}\n"
+    components = " ".join(prov._components())
+    architecture = prov._detect_arch()
+    ranked = _rank_mirrors(cfg, registry, "debian", term)
 
     apt_get = shutil.which("apt-get") or "apt-get"
-    with tempfile.TemporaryDirectory(prefix="mira-apt-") as td:
-        src = Path(td) / "sources.list"
-        src.write_text(line, encoding="utf-8")
-        # Empty sourceparts dir so only our list is used
-        parts = Path(td) / "parts"
-        parts.mkdir()
-        base_opts = [
-            "-o", f"Dir::Etc::sourcelist={src}",
-            "-o", f"Dir::Etc::sourceparts={parts}",
-            "-o", "APT::Get::List-Cleanup=0",
-        ]
-        # Prefer running apt-get; prepend sudo when not root
-        prefix: list[str] = []
-        if hasattr(os, "geteuid") and os.geteuid() != 0:
-            sudo = shutil.which("sudo")
-            if sudo:
-                prefix = [sudo]
-            elif term:
-                term.warning("Not root and sudo not found; apt may fail.")
+    # Prefer running apt-get; prepend sudo when not root.
+    prefix: list[str] = []
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        sudo = shutil.which("sudo")
+        if sudo:
+            prefix = [sudo]
+        elif term:
+            term.warning("Not root and sudo not found; apt may fail.")
 
-        # If user did not ask for update-only, run update first for reliability
-        needs_update = user_args[0] in {
-            "install", "upgrade", "dist-upgrade", "full-upgrade", "build-dep",
-        }
-        if needs_update:
-            upd = prefix + [apt_get, *base_opts, "update", "-qq"]
+    verb = user_args[0].lower()
+    needs_update = verb in {
+        "update", "install", "reinstall", "upgrade", "dist-upgrade",
+        "full-upgrade", "build-dep", "download", "source",
+    }
+    last_update_code = 1
+    for idx, candidate in enumerate(ranked, 1):
+        mirror = candidate["mirror"]
+        url = mirror["url"].rstrip("/")
+        line = f"deb [arch={architecture}] {url} {codename} {components}\n"
+        with tempfile.TemporaryDirectory(prefix="mira-apt-") as td:
+            src = Path(td) / "sources.list"
+            src.write_text(line, encoding="utf-8")
+            parts = Path(td) / "parts"
+            parts.mkdir()
+            base_opts = [
+                "-o", f"Dir::Etc::sourcelist={src}",
+                "-o", f"Dir::Etc::sourceparts={parts}",
+                "-o", "APT::Get::List-Cleanup=0",
+            ]
+
+            if needs_update:
+                upd = prefix + [apt_get, *base_opts, "update", "-qq"]
+                if term and not getattr(term, "quiet", False):
+                    term.info(f"[{idx}/{len(ranked)}] Updating indexes from {mirror.get('name', url)}")
+                if term and getattr(term, "verbose", False):
+                    term.info(" ".join(upd))
+                last_update_code = _run(upd)
+                if last_update_code != 0:
+                    if term:
+                        term.warning(f"APT update failed with {mirror.get('id')}; trying the next compatible mirror")
+                    continue
+                if verb == "update":
+                    return 0
+
+            cmd = prefix + [apt_get, *base_opts, *user_args]
             if term and getattr(term, "verbose", False):
-                term.info(" ".join(upd))
-            code = _run(upd)
-            if code != 0 and term:
-                term.warning(f"apt-get update exited {code}; continuing anyway")
+                term.info(" ".join(cmd))
+            code = _run(cmd)
+            if code == 0:
+                return 0
+            if idx < len(ranked) and verb in {
+                "install", "reinstall", "upgrade", "dist-upgrade", "full-upgrade",
+                "build-dep", "download", "source",
+            }:
+                if term:
+                    term.warning(f"APT command failed with {mirror.get('id')}; retrying after refreshing from the next compatible mirror")
+                continue
+            return code
 
-        cmd = prefix + [apt_get, *base_opts, *user_args]
-        if term and getattr(term, "verbose", False):
-            term.info(" ".join(cmd))
-        return _run(cmd)
+    if term:
+        term.error(f"APT could not update {codename} from any compatible mirror.")
+    return last_update_code
 
 
 def _mirror_host(url: str) -> str:
@@ -367,12 +433,37 @@ def run_docker(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int
         print("Usage: mira docker <docker args...>", file=sys.stderr)
         return 2
 
+    docker = shutil.which("docker") or "docker"
+    if user_args[0].lower() == "pull":
+        # A registry endpoint can be live while a specific repository is absent.
+        # Pull is safe to retry: completed layers remain cached by the daemon.
+        ranked = _rank_mirrors(cfg, registry, "docker", term)
+        last_code = 1
+        for idx, candidate in enumerate(ranked, 1):
+            mirror = candidate["mirror"]
+            host = _mirror_host(mirror["url"])
+            rewritten = _rewrite_docker_args(user_args, host)
+            cmd = [docker, *rewritten]
+            if term and not getattr(term, "quiet", False):
+                term.info(f"[{idx}/{len(ranked)}] Pulling through {mirror.get('name', host)}")
+            if term and getattr(term, "verbose", False):
+                term.info("Rewritten command: " + " ".join(cmd))
+            last_code = _run(cmd)
+            if last_code == 0:
+                return 0
+            if term:
+                term.warning(f"Docker pull failed with {mirror.get('id')}; trying the next healthy mirror")
+        return last_code
+
+    # Registry selection is irrelevant for local inspection and commands that
+    # do not fetch a Docker Hub image. Preserve Docker's own semantics directly.
+    if user_args[0].lower() not in {"run", "create"}:
+        return _run([docker, *user_args])
+
     mirror = _select_best(cfg, registry, "docker", term)
     host = _mirror_host(mirror["url"])
     rewritten = _rewrite_docker_args(user_args, host)
-    docker = shutil.which("docker") or "docker"
     cmd = [docker, *rewritten]
-    if term and not getattr(term, "quiet", False):
-        if rewritten != user_args:
-            term.info("Rewritten command: " + " ".join(cmd))
+    if term and not getattr(term, "quiet", False) and rewritten != user_args:
+        term.info("Rewritten command: " + " ".join(cmd))
     return _run(cmd)

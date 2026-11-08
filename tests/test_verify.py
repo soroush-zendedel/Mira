@@ -20,12 +20,26 @@ class VerifyHelpersTest(unittest.TestCase):
         self.assertFalse(v._looks_like_network_failure("Successfully installed pip-26.0", 0))
 
     def test_verify_debian_success(self):
-        body = b"Origin: Debian\nSuite: stable\nComponents: main\n"
-        with mock.patch.object(
-            v, "fetch_url", return_value=(200, {"Content-Type": "text/plain"}, body, 12)
-        ):
+        from mira.providers.debian import DebianProvider
+        body = b"Origin: Ubuntu\nSuite: resolute\nCodename: resolute\nArchitectures: amd64\nComponents: main universe\n"
+        with mock.patch.object(DebianProvider, "_detect_codename", return_value="resolute"), \
+             mock.patch.object(DebianProvider, "_components", return_value=["main", "universe"]), \
+             mock.patch.object(DebianProvider, "_detect_arch", return_value="amd64"), \
+             mock.patch.object(DebianProvider, "_distribution_family", return_value="ubuntu"), \
+             mock.patch("mira.providers.debian.fetch_url", return_value=(200, {"Content-Type": "text/plain"}, body, 12)):
             r = v.verify_debian({"url": "https://deb.example/debian"})
         self.assertTrue(r["ok"])
+
+    def test_verify_debian_rejects_wrong_suite(self):
+        from mira.providers.debian import DebianProvider
+        body = b"Suite: noble\nCodename: noble\nArchitectures: amd64\nComponents: main universe\n"
+        with mock.patch.object(DebianProvider, "_detect_codename", return_value="resolute"), \
+             mock.patch.object(DebianProvider, "_components", return_value=["main", "universe"]), \
+             mock.patch.object(DebianProvider, "_detect_arch", return_value="amd64"), \
+             mock.patch.object(DebianProvider, "_distribution_family", return_value="ubuntu"), \
+             mock.patch("mira.providers.debian.fetch_url", return_value=(200, {}, body, 12)):
+            r = v.verify_debian({"url": "https://deb.example/ubuntu"})
+        self.assertFalse(r["ok"])
 
     def test_verify_docker_401_ok(self):
         with mock.patch.object(

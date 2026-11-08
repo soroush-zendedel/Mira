@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from mira.services.ephemeral import (
@@ -10,6 +11,8 @@ from mira.services.ephemeral import (
     _rewrite_docker_image,
     _rewrite_docker_args,
     _strip_double_dash,
+    run_apt,
+    run_docker,
     run_npm,
 )
 
@@ -90,7 +93,8 @@ class NpmPassthroughTest(unittest.TestCase):
         self.assertEqual(_inject_npm_registry_args(args, "https://mirror.example/"), args)
 
     def test_run_uses_selected_mirror_and_forwards_exit_code(self):
-        with mock.patch("mira.services.ephemeral._select_best", return_value={"url": "https://mirror.example/"}) as select, \
+        candidates = [{"mirror": {"url": "https://mirror.example/", "id": "m1"}}]
+        with mock.patch("mira.services.ephemeral._rank_mirrors", return_value=candidates) as select, \
              mock.patch("mira.services.ephemeral.shutil.which", return_value="npm"), \
              mock.patch("mira.services.ephemeral._run", return_value=0) as run:
             code = run_npm(object(), object(), ["view", "express", "version"], None)
@@ -98,8 +102,61 @@ class NpmPassthroughTest(unittest.TestCase):
         select.assert_called_once()
         run.assert_called_once_with(["npm", "--registry", "https://mirror.example/", "view", "express", "version"])
 
+    def test_read_only_command_retries_next_registry(self):
+        candidates = [
+            {"mirror": {"id": "first", "url": "https://one.example/"}},
+            {"mirror": {"id": "second", "url": "https://two.example/"}},
+        ]
+        with mock.patch("mira.services.ephemeral._rank_mirrors", return_value=candidates), \
+             mock.patch("mira.services.ephemeral.shutil.which", return_value="npm"), \
+             mock.patch("mira.services.ephemeral._run", side_effect=[1, 0]) as run:
+            code = run_npm(object(), object(), ["view", "express", "version"], None)
+        self.assertEqual(code, 0)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[1].args[0][:3], ["npm", "--registry", "https://two.example/"])
+
     def test_management_actions_are_not_forwarded(self):
         from mira.cli import _should_run_npm_passthrough
         self.assertFalse(_should_run_npm_passthrough(["npm", "list"]))
         self.assertFalse(_should_run_npm_passthrough(["npm", "set", "--dry-run"]))
         self.assertTrue(_should_run_npm_passthrough(["npm", "view", "express", "version"]))
+
+
+class PackageCommandFailoverTest(unittest.TestCase):
+    def test_apt_update_tries_next_suite_compatible_mirror(self):
+        candidates = [
+            {"mirror": {"id": "bad", "url": "https://bad.example/ubuntu"}},
+            {"mirror": {"id": "good", "url": "https://good.example/ubuntu"}},
+        ]
+        seen_sources = []
+
+        def fake_apt_run(cmd):
+            source_option = next(arg for arg in cmd if arg.startswith("Dir::Etc::sourcelist="))
+            seen_sources.append(Path(source_option.split("=", 1)[1]).read_text(encoding="utf-8"))
+            return 100 if len(seen_sources) == 1 else 0
+
+        with mock.patch("mira.services.ephemeral._rank_mirrors", return_value=candidates), \
+             mock.patch("mira.services.ephemeral.DebianProvider._detect_codename", return_value="resolute"), \
+             mock.patch("mira.services.ephemeral.DebianProvider._components", return_value=["main", "universe"]), \
+             mock.patch("mira.services.ephemeral.DebianProvider._detect_arch", return_value="amd64"), \
+             mock.patch("mira.services.ephemeral.shutil.which", return_value="apt-get"), \
+             mock.patch("mira.services.ephemeral._run", side_effect=fake_apt_run) as run:
+            code = run_apt(object(), object(), ["update"], None)
+        self.assertEqual(code, 0)
+        self.assertEqual(run.call_count, 2)
+        self.assertIn("https://bad.example/ubuntu", seen_sources[0])
+        self.assertIn("https://good.example/ubuntu", seen_sources[1])
+
+    def test_docker_pull_retries_next_registry(self):
+        candidates = [
+            {"mirror": {"id": "bad", "url": "https://bad.example"}},
+            {"mirror": {"id": "good", "url": "https://good.example"}},
+        ]
+        with mock.patch("mira.services.ephemeral._rank_mirrors", return_value=candidates), \
+             mock.patch("mira.services.ephemeral.shutil.which", return_value="docker"), \
+             mock.patch("mira.services.ephemeral._run", side_effect=[1, 0]) as run:
+            code = run_docker(object(), object(), ["pull", "nginx"], None)
+        self.assertEqual(code, 0)
+        self.assertEqual(run.call_count, 2)
+        self.assertIn("bad.example/library/nginx", run.call_args_list[0].args[0])
+        self.assertIn("good.example/library/nginx", run.call_args_list[1].args[0])

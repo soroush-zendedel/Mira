@@ -26,9 +26,42 @@ class DebianProvider(RepositoryProvider):
         self.backup = backup or BackupService()
 
     def list_mirrors(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
-        return self.registry.list_mirrors(provider="debian", countries=countries)
+        mirrors = self.registry.list_mirrors(provider="debian", countries=countries)
+        try:
+            upstream = self._upstream_mirror()
+            if not any(m.get("url", "").rstrip("/") == upstream["url"].rstrip("/") for m in mirrors):
+                mirrors.append(upstream)
+        except ProviderError:
+            pass
+        return mirrors
+
+    @staticmethod
+    def _os_release() -> dict[str, str]:
+        result: dict[str, str] = {}
+        try:
+            for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
+                key, sep, value = line.partition("=")
+                if sep:
+                    result[key] = value.strip().strip('"').strip("'")
+        except OSError:
+            pass
+        return result
+
+    def _distribution_family(self) -> str:
+        info = self._os_release()
+        identity = " ".join((info.get("ID", ""), info.get("ID_LIKE", ""))).lower().split()
+        if "ubuntu" in identity:
+            return "ubuntu"
+        if "debian" in identity:
+            return "debian"
+        raise ProviderError("Mira APT mirror selection supports Debian and Ubuntu releases only")
 
     def _detect_codename(self) -> str:
+        info = self._os_release()
+        # Ubuntu derivatives such as Mint use their own lsb_release codename,
+        # while Ubuntu archives are indexed by the Ubuntu base codename.
+        if info.get("UBUNTU_CODENAME"):
+            return info["UBUNTU_CODENAME"]
         try:
             out = subprocess.check_output(
                 ["lsb_release", "-cs"], stderr=subprocess.DEVNULL, text=True, timeout=5
@@ -36,15 +69,33 @@ class DebianProvider(RepositoryProvider):
             return out.strip()
         except Exception:
             pass
-        # fallback /etc/os-release
-        try:
-            text = Path("/etc/os-release").read_text(encoding="utf-8")
-            m = re.search(r"VERSION_CODENAME=(.+)", text)
-            if m:
-                return m.group(1).strip().strip('"')
-        except Exception:
-            pass
-        return "bookworm"  # safe default for recent Debian
+        if info.get("VERSION_CODENAME"):
+            return info["VERSION_CODENAME"]
+        raise ProviderError("Could not detect this system's Debian/Ubuntu release codename")
+
+    def _components(self) -> list[str]:
+        family = self._distribution_family()
+        if family == "ubuntu":
+            return ["main", "restricted", "universe", "multiverse"]
+        return ["main", "contrib", "non-free", "non-free-firmware"]
+
+    def _upstream_mirror(self) -> dict[str, Any]:
+        family = self._distribution_family()
+        if family == "ubuntu":
+            url = "https://archive.ubuntu.com/ubuntu"
+            name = "Ubuntu Official Archive (global fallback)"
+        else:
+            url = "https://deb.debian.org/debian"
+            name = "Debian Official Archive (global fallback)"
+        return {
+            "id": f"{family}-official-upstream",
+            "name": name,
+            "url": url,
+            "country": "global",
+            "provider": "debian",
+            "enabled": True,
+            "priority": 10,
+        }
 
     def _detect_arch(self) -> str:
         machine = platform.machine().lower()
@@ -55,45 +106,54 @@ class DebianProvider(RepositoryProvider):
             "armv7l": "armhf",
             "i686": "i386",
             "i386": "i386",
+            "ppc64le": "ppc64el",
+            "ppc64el": "ppc64el",
+            "s390x": "s390x",
+            "riscv64": "riscv64",
+            "armv6l": "armel",
         }
-        return mapping.get(machine, "amd64")
+        if machine not in mapping:
+            raise ProviderError(f"Unsupported APT architecture: {machine}")
+        return mapping[machine]
 
     def check_mirror(self, mirror: dict[str, Any]) -> dict[str, Any]:
         base = mirror["url"].rstrip("/")
-        codename = self._detect_codename()
-        # Try detected codename plus common Debian/Ubuntu suites (mirrors differ)
-        suites = []
-        for s in (codename, "stable", "bookworm", "jammy", "noble", "testing"):
-            if s and s not in suites:
-                suites.append(s)
-        candidates = []
-        for suite in suites:
-            candidates.append(f"{base}/dists/{suite}/InRelease")
-            candidates.append(f"{base}/dists/{suite}/Release")
-        # Root probe as last resort
-        candidates.append(base + "/")
+        try:
+            codename = self._detect_codename()
+            components = set(self._components())
+            architecture = self._detect_arch()
+        except ProviderError as e:
+            return {"available": False, "valid": False, "latency_ms": None, "error": str(e), "stability": 0.0}
 
         last_err = None
         best_latency = None
-        for url in candidates:
+        for filename in ("InRelease", "Release"):
+            url = f"{base}/dists/{codename}/{filename}"
             try:
                 status, headers, body, latency = fetch_url(url, timeout=8.0, max_size=512 * 1024)
                 if best_latency is None:
                     best_latency = latency
-                if not (200 <= status < 400):
+                if not 200 <= status < 300:
                     last_err = f"HTTP {status} for {url}"
                     continue
                 text = (body or b"").decode("utf-8", errors="replace")
-                valid = (
-                    "Origin:" in text
-                    or "Suite:" in text
-                    or "Codename:" in text
-                    or "SHA256:" in text
-                    or "MD5Sum:" in text
-                    or "Components:" in text
-                    or status == 200 and len(body or b"") > 64
-                )
-                if valid:
+                fields = {
+                    match.group(1).lower(): match.group(2).strip()
+                    for match in re.finditer(r"^([A-Za-z0-9-]+):\s*(.*?)\s*$", text, re.MULTILINE)
+                }
+                release_name = fields.get("codename") or fields.get("suite")
+                missing_components = components - set(fields.get("components", "").split())
+                architectures = set(fields.get("architectures", "").split())
+                if release_name and release_name != codename:
+                    last_err = f"Release codename {release_name!r} does not match {codename!r}"
+                    continue
+                if missing_components:
+                    last_err = f"Missing components for {codename}: {', '.join(sorted(missing_components))}"
+                    continue
+                if architectures and architecture not in architectures:
+                    last_err = f"Architecture {architecture} is not supported by {codename}"
+                    continue
+                if fields.get("components"):
                     return {
                         "available": True,
                         "valid": True,
@@ -101,8 +161,10 @@ class DebianProvider(RepositoryProvider):
                         "error": None,
                         "stability": 0.75,
                         "codename": codename,
+                        "distribution": self._distribution_family(),
+                        "architecture": architecture,
                     }
-                last_err = f"Unexpected content at {url}"
+                last_err = f"Release metadata at {url} has no Components field"
             except NetworkError as e:
                 last_err = str(e)
                 continue
@@ -131,13 +193,20 @@ class DebianProvider(RepositoryProvider):
         url = mirror["url"].rstrip("/")
         codename = self._detect_codename()
         arch = self._detect_arch()
+        family = self._distribution_family()
+        components = " ".join(self._components())
+        keyring = (
+            "/usr/share/keyrings/ubuntu-archive-keyring.gpg"
+            if family == "ubuntu"
+            else "/usr/share/keyrings/debian-archive-keyring.gpg"
+        )
         content = f"""# Written by Mira - do not edit manually unless you know what you are doing
 Types: deb
 URIs: {url}
-Suites: {codename} {codename}-updates {codename}-backports
-Components: main contrib non-free non-free-firmware
+Suites: {codename}
+Components: {components}
 Architectures: {arch}
-Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+Signed-By: {keyring}
 """
         summary = {
             "provider": "debian",

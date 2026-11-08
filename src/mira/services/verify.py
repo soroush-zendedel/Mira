@@ -139,33 +139,18 @@ def verify_pypi(mirror: dict[str, Any], *, timeout: float = 90.0) -> dict[str, A
 
 
 def verify_debian(mirror: dict[str, Any], *, timeout: float = 30.0) -> dict[str, Any]:
-    """Fetch Debian InRelease / Release from the mirror (no root required)."""
-    base = mirror.get("url", "").rstrip("/")
-    # Common paths
-    candidates = [
-        base + "/dists/stable/InRelease",
-        base + "/dists/bookworm/InRelease",
-        base + "/dists/jammy/InRelease",
-        base + "/dists/noble/InRelease",
-        base + "/dists/stable/Release",
-    ]
-    last_err = "no candidate URL worked"
-    for probe in candidates:
-        try:
-            status, headers, body, latency = fetch_url(probe, timeout=timeout, max_size=256 * 1024)
-            if 200 <= status < 400 and body:
-                text = body[:200].decode("utf-8", "replace")
-                if "Origin:" in text or "Suite:" in text or "Components:" in text or "Hash:" in text or len(body) > 64:
-                    return {
-                        "ok": True,
-                        "method": f"GET {probe}",
-                        "detail": f"HTTP {status} in {latency}ms",
-                    }
-            last_err = f"HTTP {status} for {probe}"
-        except NetworkError as e:
-            last_err = str(e)
-            continue
-    return {"ok": False, "method": "debian InRelease", "detail": last_err, "error": last_err}
+    """Verify the exact configured distribution, suite, components, and arch."""
+    from mira.providers.debian import DebianProvider
+
+    result = DebianProvider(None).check_mirror(mirror)
+    ok = bool(result.get("available") and result.get("valid"))
+    detail = result.get("error") or f"{result.get('codename')} metadata is usable"
+    return {
+        "ok": ok,
+        "method": f"APT Release probe ({result.get('codename', 'current release')})",
+        "detail": detail,
+        **({} if ok else {"error": detail}),
+    }
 
 
 def verify_docker(mirror: dict[str, Any], *, timeout: float = 25.0) -> dict[str, Any]:
