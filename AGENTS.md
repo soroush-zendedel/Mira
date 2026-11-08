@@ -195,10 +195,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_standalone.ps1
 
 Pushing a version tag matching `v*` triggers `.github/workflows/release.yml`.
 CI builds a Linux standalone executable and `.deb`, a Windows standalone
-executable, a source ZIP, and `SHA256SUMS`, then attaches them to a GitHub
-Release. The build tools are installed by CI and are not runtime dependencies.
-The source archive uses `git archive HEAD`, so only committed files in the
-tagged commit are included.
+executable, an Arch Linux package (on an Arch container), a source ZIP, and
+`SHA256SUMS`, then attaches them to a GitHub Release. The build tools are
+installed by CI and are not runtime dependencies. The source archive uses
+`git archive HEAD`, so only committed files in the tagged commit are included.
+
+`mira upgrade` fetches the release **source** archive for user/source installs
+and replaces the package tree. For pacman-managed (Arch) installs it refuses to
+overwrite files and tells the user to upgrade with pacman.
 
 Before a release, use the helper scripts in `scripts/` to synchronize
 `VERSION`, `src/mira/__init__.py`, `src/mira/constants.py`, and

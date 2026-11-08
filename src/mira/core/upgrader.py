@@ -36,7 +36,10 @@ class AppUpgrader:
     Upgrade Mira from the latest GitHub Release.
 
     - Frozen binary (PyInstaller): replace the executable itself.
-    - Source install: replace the src/mira package tree the launcher uses.
+    - Source / user install: fetch the release *source* archive (not the
+      platform binary) and replace the src/mira package tree the launcher uses.
+    - Pacman-managed (Arch) installs: refuse to touch files; tell the user to
+      upgrade with pacman so package ownership is preserved.
     """
 
     def __init__(self, install_root: Path | None = None, term: Terminal | None = None):
@@ -74,6 +77,56 @@ class AppUpgrader:
             return pkg.parent.parent, pkg
         return pkg.parent, pkg
 
+    def _is_pacman_managed(self) -> bool:
+        """
+        True when this Mira install is owned by an Arch/pacman package.
+
+        In that case `mira upgrade` must not overwrite files; the user should
+        upgrade with pacman so database ownership stays consistent.
+        """
+        if is_windows():
+            return False
+        try:
+            # Prefer the launcher on PATH
+            exe = shutil.which("mira")
+            paths_to_check: list[Path] = []
+            if exe:
+                paths_to_check.append(Path(exe).resolve())
+            # Also check the running package tree (deb/arch layout)
+            if self.src_dir and self.src_dir.exists():
+                paths_to_check.append(self.src_dir)
+            # Typical system locations
+            for p in (Path("/usr/bin/mira"), Path("/usr/lib/mira")):
+                if p.exists():
+                    paths_to_check.append(p)
+
+            for path in paths_to_check:
+                # pacman -Qo <path> exits 0 and prints "is owned by mira ..."
+                r = subprocess.run(
+                    ["pacman", "-Qo", str(path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if r.returncode == 0 and "is owned by" in (r.stdout or ""):
+                    return True
+            # Fallback: package named "mira" is installed
+            r = subprocess.run(
+                ["pacman", "-Q", "mira"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if r.returncode == 0:
+                # Only treat as managed if our files live under /usr (not user install)
+                root = str(self.install_root)
+                if root.startswith("/usr/") or root == "/usr":
+                    return True
+        except (FileNotFoundError, OSError):
+            # pacman not installed or not usable
+            return False
+        return False
+
     def _latest_release(self) -> dict[str, Any]:
         url = f"{GITHUB_API_BASE}/releases/latest"
         status, _, body, _ = fetch_url(
@@ -99,11 +152,16 @@ class AppUpgrader:
     def _asset_url_for_platform(self, release: dict[str, Any]) -> tuple[str, str]:
         """
         Return (url, kind) where kind is 'binary' or 'source'.
-        Prefer platform binary for frozen installs; source zip otherwise.
+
+        - Frozen / single-file binary installs → platform binary from the release.
+        - Source / user installs → release *source* archive (never the binary).
+          Prefer the explicit `mira-*-source.zip` asset, then any mira zip that
+          is not a Windows binary, then the GitHub tag zipball.
         """
         assets = release.get("assets") or []
         names = {((a.get("name") or "").lower()): a for a in assets}
 
+        # Binary path only for frozen or single-file binary installs
         if self.frozen or self._looks_like_binary_install():
             if is_windows():
                 for key in ("mira-windows-x86_64.exe", "mira.exe", "mira-windows.exe"):
@@ -113,15 +171,22 @@ class AppUpgrader:
                 for key in ("mira-linux-x86_64", "mira-linux", "mira"):
                     if key in names:
                         return names[key]["browser_download_url"], "binary"
+            # Binary preferred but missing: fall through to source with a warning later
 
-        # Source zip assets
+        # Source installs (and binary fallback): always take source, never binary
         for a in assets:
             name = (a.get("name") or "").lower()
             if name.endswith(".zip") and "mira" in name and "source" in name:
                 return a["browser_download_url"], "source"
         for a in assets:
             name = (a.get("name") or "").lower()
-            if name.endswith(".zip") and "mira" in name and "windows" not in name:
+            if (
+                name.endswith(".zip")
+                and "mira" in name
+                and "windows" not in name
+                and "linux-x86" not in name
+                and not name.endswith(".exe")
+            ):
                 return a["browser_download_url"], "source"
 
         zipball = release.get("zipball_url")
@@ -295,6 +360,25 @@ class AppUpgrader:
         self.term.info("Run `mira --version` again to confirm.")
 
     def upgrade(self, *, dry_run: bool = False) -> str:
+        # Pacman-managed installs must be upgraded by pacman, not by overwriting files.
+        if self._is_pacman_managed():
+            self.term.warning(
+                "This Mira installation is managed by pacman (Arch package)."
+            )
+            self.term.info(
+                "Upgrade with pacman so package ownership stays consistent:\n"
+                "  sudo pacman -Syu\n"
+                "or install a newer package from the GitHub Release:\n"
+                "  sudo pacman -U mira-*-any.pkg.tar.zst\n"
+                "`mira upgrade` is for user/source installs only and will not "
+                "replace pacman-managed files."
+            )
+            if not dry_run:
+                raise UpdateError(
+                    "Refusing to upgrade a pacman-managed install. Use pacman instead."
+                )
+            return __version__
+
         self.term.info("Checking latest GitHub Release...")
         release = self._latest_release()
         remote = (release.get("tag_name") or "").lstrip("v")

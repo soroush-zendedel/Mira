@@ -17,3 +17,6 @@ htmlcov/
 *.bak
 .idea/
 .vscode/
+packaging/out/
+packaging/stage/
+packaging/arch/

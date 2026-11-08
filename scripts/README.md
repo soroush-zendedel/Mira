@@ -52,8 +52,11 @@ Pushing commits to `main` alone does **not** publish a Release.
 | `mira-windows-x86_64.exe` | Standalone Windows binary (PyInstaller) |
 | `mira-linux-x86_64` | Standalone Linux binary (PyInstaller) |
 | `mira_<ver>_amd64.deb` | Debian / Ubuntu package |
+| `mira-<ver>-*-any.pkg.tar.zst` | Arch Linux package (built on Arch in CI) |
 | `mira-<ver>-source.zip` | Source archive |
 | `SHA256SUMS` | Checksums for verification |
+
+The Arch package is built in an `archlinux:latest` container via `scripts/build_arch.sh`. Because the package is owned by pacman, end users should upgrade it with pacman; `mira upgrade` is reserved for user/source installs.
 
 ### Repository settings (one-time)
 

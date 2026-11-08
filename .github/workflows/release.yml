@@ -1,12 +1,17 @@
-# Build and publish Mira releases for Linux and Windows.
+# Build and publish Mira releases for Linux, Windows, and Arch Linux.
 # Trigger: push a version tag, e.g.  git tag v1.0.0 && git push origin v1.0.0
 #
 # Assets produced:
 #   - mira-linux-x86_64          (standalone binary, PyInstaller)
 #   - mira-windows-x86_64.exe    (standalone binary, PyInstaller)
 #   - mira_<ver>_amd64.deb       (Debian package)
+#   - mira-<ver>-*.pkg.tar.zst   (Arch Linux package, built on Arch)
 #   - mira-<ver>-source.zip      (source archive)
 #   - SHA256SUMS
+#
+# Note: Arch packages are owned by pacman. Users should upgrade them with
+# `sudo pacman -U ...` or a future AUR/repo path; `mira upgrade` does not
+# replace pacman-managed files.
 
 name: Release
 
@@ -109,8 +114,41 @@ jobs:
           name: windows-artifacts
           path: dist/out/*
 
+  build-arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git python
+
+      - name: Version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Arch package
+        run: |
+          bash scripts/build_arch.sh "${{ steps.ver.outputs.version }}"
+          mkdir -p dist/out
+          cp packaging/out/*.pkg.tar.* dist/out/ || true
+          ls -la dist/out/
+
+      - name: Upload Arch artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-artifacts
+          path: dist/out/*
+
   publish:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-arch]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (for notes)
@@ -126,6 +164,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: windows-artifacts
+          path: release-assets
+
+      - name: Download Arch artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-artifacts
           path: release-assets
 
       - name: Checksums
@@ -165,8 +209,18 @@ jobs:
             mira --version && mira update
             ```
 
+            ### Arch Linux (.pkg.tar.zst)
+            ```bash
+            PKG_URL=$(curl -fsSL https://api.github.com/repos/soroush-zendedel/Mira/releases/latest | grep -oE 'https://[^"]+/mira-[0-9.]+-[0-9]+-any\.pkg\.tar\.zst' | head -n1)
+            curl -fsSL -o /tmp/mira.pkg.tar.zst "$PKG_URL"
+            sudo pacman -U /tmp/mira.pkg.tar.zst
+            mira --version && mira update
+            ```
+            The Arch package is owned by pacman. Upgrade it with `sudo pacman -Syu` (or `-U` a newer package file). Do **not** use `mira upgrade` for pacman-managed installs.
+
             ### From source (any OS, no pip)
             See README — `installers/install.sh` / `installers/install.ps1`.
+            Source installs upgrade with `mira upgrade` (fetches the release source archive).
 
             Verify downloads with `SHA256SUMS`.
           files: |

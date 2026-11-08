@@ -20,7 +20,7 @@ Repository: https://github.com/soroush-zendedel/Mira
 
 ## Install
 
-Pick one method. Standalone binaries and `.deb` are produced automatically by GitHub Actions when a version tag is pushed.
+Pick one method. Standalone binaries, `.deb`, and Arch `.pkg.tar.zst` are produced automatically by GitHub Actions when a version tag is pushed.
 
 ### Windows — standalone EXE (recommended)
 
@@ -79,6 +79,24 @@ sudo dpkg -i /tmp/mira.deb
 
 Requires `python3 >= 3.10`. The package installs to `/usr/bin/mira` (already on PATH).
 
+### Arch Linux — `.pkg.tar.zst` package
+
+The Release workflow builds the package on an Arch Linux environment and attaches it to the GitHub Release.
+
+```bash
+# 1) Resolve the latest package URL
+PKG_URL=$(curl -fsSL https://api.github.com/repos/soroush-zendedel/Mira/releases/latest \
+  | grep -oE 'https://[^"]+/mira-[0-9.]+-[0-9]+-any\.pkg\.tar\.zst' | head -n1)
+
+# 2) Download and install
+curl -fsSL -o /tmp/mira.pkg.tar.zst "$PKG_URL"
+sudo pacman -U /tmp/mira.pkg.tar.zst
+mira --version
+mira update
+```
+
+Requires `python >= 3.10`. The package is owned by **pacman**; upgrade it with `sudo pacman -Syu` (or `-U` a newer package file). Do **not** use `mira upgrade` for pacman-managed installs — that command is reserved for user/source installs so it never overwrites files managed by pacman.
+
 ### From source (no pip, works offline after clone)
 
 **Linux**
@@ -98,6 +116,8 @@ powershell -ExecutionPolicy Bypass -File .\installers\install.ps1
 ```
 
 Or download the ZIP from GitHub → extract → run the same installer script.
+
+Source (user) installs upgrade with `mira upgrade`, which fetches the new GitHub release **source** archive (not the platform binary) and replaces the package tree under the user install root.
 
 ### Verify downloads
 
