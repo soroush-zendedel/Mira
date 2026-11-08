@@ -47,9 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_upd.add_argument("--force", action="store_true", help="Force re-download")
     sub.add_parser("upgrade", help="Upgrade Mira application from GitHub Releases")
     p_un = sub.add_parser("uninstall", help="Remove Mira completely from this user account")
-    p_pip = sub.add_parser("pip", help="Run pip via best mirror (ephemeral, no permanent config)")
+    p_pip = sub.add_parser("pip", help="Run pip with automatic mirror retries (no permanent config)")
     p_pip.add_argument("pip_args", nargs=argparse.REMAINDER, help="Arguments passed to pip")
-    p_apt = sub.add_parser("apt", help="Run apt-get via best mirror (ephemeral, no permanent config)")
+    p_apt = sub.add_parser("apt", help="Run apt-get with automatic mirror retries (no permanent config)")
     p_apt.add_argument("apt_args", nargs=argparse.REMAINDER, help="Arguments passed to apt-get")
     p_reset = sub.add_parser(
         "reset",

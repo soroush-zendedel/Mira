@@ -14,6 +14,7 @@ from mira.services.ephemeral import (
     run_apt,
     run_docker,
     run_npm,
+    _run_with_mirror_retry,
 )
 
 
@@ -123,6 +124,24 @@ class NpmPassthroughTest(unittest.TestCase):
 
 
 class PackageCommandFailoverTest(unittest.TestCase):
+    def test_retries_full_mirror_cycle_until_command_succeeds(self):
+        candidates = [{"mirror": {"id": "one", "url": "https://one.example"}}]
+        with mock.patch("mira.services.ephemeral._rank_mirrors", return_value=candidates) as rank, \
+             mock.patch("mira.services.ephemeral.time.sleep") as sleep:
+            attempt = mock.Mock(side_effect=[1, 0])
+            code = _run_with_mirror_retry(object(), object(), "npm", None, attempt)
+        self.assertEqual(code, 0)
+        self.assertEqual(rank.call_count, 2)
+        self.assertEqual(attempt.call_count, 2)
+        sleep.assert_called_once_with(3)
+
+    def test_retry_loop_can_be_cancelled(self):
+        candidates = [{"mirror": {"id": "one", "url": "https://one.example"}}]
+        with mock.patch("mira.services.ephemeral._rank_mirrors", return_value=candidates), \
+             mock.patch("mira.services.ephemeral.time.sleep", side_effect=KeyboardInterrupt):
+            code = _run_with_mirror_retry(object(), object(), "npm", None, lambda *_: 1)
+        self.assertEqual(code, 130)
+
     def test_apt_update_tries_next_suite_compatible_mirror(self):
         candidates = [
             {"mirror": {"id": "bad", "url": "https://bad.example/ubuntu"}},

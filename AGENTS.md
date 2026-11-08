@@ -30,8 +30,9 @@ user-facing behavior.
 - `src/mira/services/backup.py` — backups before configuration writes.
 - `src/mira/services/verify.py` — functional verification after a provider's
   `set` operation.
-- `src/mira/services/ephemeral.py` — one-shot package-manager commands that
-  use a selected mirror without persistent configuration changes.
+- `src/mira/services/ephemeral.py` — package-manager commands that use ranked
+  mirrors without persistent configuration changes. Repository-dependent
+  operations retry full mirror cycles until success or `Ctrl+C` cancellation.
 - `mirrors/` — source mirror database shipped and fetched by the updater.
 - `tests/` — standard-library `unittest` tests.
 - `.github/workflows/ci.yml` — test matrix.
@@ -97,10 +98,13 @@ provider's protocol details verbatim.
 6. **Decide whether one-shot dispatch is in scope.** Persistent management
    (`list/check/current/set/reset`) does not automatically imply one-shot
    package-manager passthrough. If adding passthrough, register the provider in
-   the provider maps in `services/ephemeral.py`, implement a one-shot runner
-   that passes the registry only to the child process, and add an early CLI
-   dispatch branch before argparse. Avoid modifying persistent configuration
-   for one-shot commands.
+   the provider maps in `services/ephemeral.py`, implement a runner that passes
+   the registry only to the child process, and add an early CLI dispatch
+   branch before argparse. For repository-dependent operations, cycle through
+   ranked mirrors, refresh the ranking after exhausting a cycle, and stop only
+   on success or `Ctrl+C` (exit code 130). Avoid modifying persistent
+   configuration for these commands. Keep local and Mira management commands
+   outside the retry loop.
 7. **Add tests.** Cover data loading and country filtering, protocol-valid and
    invalid health responses, URL and configuration parsing, `dry_run`, backup
    and preservation behavior, reset behavior, CLI parsing/dispatch, and
@@ -122,12 +126,13 @@ handles these before `argparse`:
 - Docker uses an explicit set of Docker CLI verbs in `main()`. Mira provider
   actions such as `mira docker list` and `mira docker set` remain argparse
   commands; Docker operations such as `mira docker pull nginx` are sent to the
-  one-shot runner.
+  retrying runner for `docker pull`.
 - npm uses `_should_run_npm_passthrough()`. The reserved management actions
   (`list`, `check`, `current`, `status`, `set`, `reset`) stay with Mira; other
   npm commands such as `mira npm view express version` go to the npm runner.
-  The runner supplies the chosen registry with a command-line option and does
-  not change `.npmrc`. An explicit npm `--registry` is preserved.
+  The runner supplies ranked registries with a command-line option and retries
+  full cycles until success or cancellation; it does not change `.npmrc`. An
+  explicit npm `--registry` is preserved and bypasses selection.
 - `mira pip ...` and `mira apt ...` have dedicated top-level parsers and
   dispatch paths.
 

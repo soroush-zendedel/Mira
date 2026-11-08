@@ -120,7 +120,7 @@ mira pypi set --dry-run
 mira pypi set        # apply best healthy mirror (user scope)
 mira npm list
 mira npm set --dry-run
-mira npm view express version  # run npm once through the best mirror
+mira npm view express version  # retry mirrors until the command succeeds
 mira config set countries ir,de
 ```
 
@@ -132,13 +132,23 @@ Mira keeps npm's own commands available behind the `mira npm` prefix:
 - Other commands are passed to the installed npm CLI. For example,
   `mira npm view express version` or `mira npm install lodash`.
 
-For a normal npm command, Mira checks the configured npm mirrors for the
-selected countries, ranks healthy ones using the configured strategy, and adds
-the chosen URL as a command-line `--registry` option. This applies to that
+For registry-dependent npm commands, Mira checks the configured npm mirrors
+for the selected countries, ranks healthy ones using the configured strategy,
+and adds each URL as a command-line `--registry` option. If a command fails on
+every candidate, Mira waits three seconds, checks the mirrors again, and
+repeats until it succeeds. Press `Ctrl+C` to cancel. This applies to that
 invocation only; it does not edit `.npmrc`. An explicit `--registry` supplied
-by the user is preserved. The native `npm` command must be installed
-separately. Run `mira update` before the first one-shot npm command so the
-mirror database is present.
+by the user is preserved and bypasses Mira's retry loop. The native `npm`
+command must be installed separately. Run `mira update` before the first
+Mira-managed npm command so the mirror database is present.
+
+The same retry behavior applies to Mira-managed `pip` package retrieval,
+APT commands that need repository indexes (`update`, `install`, `upgrade`,
+`download`, `source`, and `build-dep`), and `docker pull`. A command that keeps
+failing will keep retrying, including when the cause is a missing package/image
+or an invalid argument; cancel it with `Ctrl+C` and correct the command. Local
+package-manager operations and Mira management commands are not wrapped in the
+retry loop.
 
 To change npm's persistent default, use Mira's provider action instead:
 

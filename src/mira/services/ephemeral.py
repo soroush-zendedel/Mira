@@ -1,4 +1,4 @@
-"""One-shot package-manager runs through the best mirror (no permanent config)."""
+"""Package-manager runs through ranked mirrors without persistent config."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -83,6 +84,48 @@ def _rank_mirrors(cfg, registry: MirrorRegistry, provider_name: str, term) -> li
     return ranked
 
 
+def _run_with_mirror_retry(cfg, registry: MirrorRegistry, provider_name: str, term, attempt) -> int:
+    """Cycle through ranked mirrors until the package command succeeds or is cancelled."""
+    cycle = 0
+    while True:
+        cycle += 1
+        try:
+            ranked = _rank_mirrors(cfg, registry, provider_name, term)
+        except KeyboardInterrupt:
+            if term:
+                term.warning("Mirror retry cancelled by user.")
+            return 130
+        except NoHealthyMirrorError as exc:
+            if term:
+                term.warning(f"No healthy {provider_name} mirror right now ({exc}); retrying in 3 seconds. Press Ctrl+C to cancel.")
+            try:
+                time.sleep(3)
+            except KeyboardInterrupt:
+                if term:
+                    term.warning("Mirror retry cancelled by user.")
+                return 130
+            continue
+
+        if term and cycle > 1:
+            term.info(f"Retrying {provider_name} mirror selection (cycle {cycle}). Press Ctrl+C to cancel.")
+        for idx, candidate in enumerate(ranked, 1):
+            code = attempt(candidate, idx, len(ranked))
+            if code == 0:
+                return 0
+            if code == 130:
+                if term:
+                    term.warning("Mirror retry cancelled by user.")
+                return code
+        if term:
+            term.warning(f"All {provider_name} mirrors failed this cycle; checking them again in 3 seconds. Press Ctrl+C to cancel.")
+        try:
+            time.sleep(3)
+        except KeyboardInterrupt:
+            if term:
+                term.warning("Mirror retry cancelled by user.")
+            return 130
+
+
 def _strip_double_dash(args: list[str]) -> list[str]:
     if args and args[0] == "--":
         return args[1:]
@@ -145,16 +188,13 @@ def run_pip(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
     if verb not in {"install", "download", "wheel", "index"}:
         return _run([sys.executable, "-m", "pip", *user_args])
 
-    ranked = _rank_mirrors(cfg, registry, "pypi", term)
-    last_code = 1
-
-    for idx, cand in enumerate(ranked, 1):
+    def attempt(cand: dict[str, Any], idx: int, total: int) -> int:
         m = cand["mirror"]
         url = m["url"]
         host = urlparse(url).hostname or ""
         if term and not getattr(term, "quiet", False):
             term.info(
-                f"[{idx}/{len(ranked)}] Trying {m.get('name')} ({m.get('id')}) "
+                f"[{idx}/{total}] Trying {m.get('name')} ({m.get('id')}) "
                 f"score={cand.get('score')} url={url}"
             )
 
@@ -164,20 +204,14 @@ def run_pip(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
             term.info(" ".join(cmd))
 
         code = _run(cmd)
-        last_code = code
-        if code == 0:
-            if term and not getattr(term, "quiet", False):
-                term.success(f"Done using {m.get('name')}")
-            return 0
-
-        # Non-zero: try next mirror only for likely network / index failures.
-        # Package-not-found (no matching distribution) should not rotate forever.
+        if code == 0 and term and not getattr(term, "quiet", False):
+            term.success(f"Done using {m.get('name')}")
         if term:
-            term.warning(f"pip exited {code} with {m.get('id')}; trying next mirror if available...")
+            if code:
+                term.warning(f"pip exited {code} with {m.get('id')}; trying the next mirror")
+        return code
 
-    if term:
-        term.error("All candidate PyPI mirrors failed for this pip command.")
-    return last_code
+    return _run_with_mirror_retry(cfg, registry, "pypi", term, attempt)
 
 
 def _inject_npm_registry_args(user_args: list[str], url: str) -> list[str]:
@@ -224,22 +258,20 @@ def run_npm(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
         "install", "i", "ci", "add", "update", "up", "pack",
     }
     if verb in retryable_verbs:
-        ranked = _rank_mirrors(cfg, registry, "npm", term)
-        last_code = 1
-        for idx, candidate in enumerate(ranked, 1):
+        def attempt(candidate: dict[str, Any], idx: int, total: int) -> int:
             mirror = candidate["mirror"]
             args = _inject_npm_registry_args(user_args, mirror["url"])
             if term and not getattr(term, "quiet", False):
-                term.info(f"[{idx}/{len(ranked)}] Trying npm registry {mirror['url']}")
+                term.info(f"[{idx}/{total}] Trying npm registry {mirror['url']}")
             cmd = [npm, *args]
             if term and getattr(term, "verbose", False):
                 term.info(" ".join(cmd))
-            last_code = _run(cmd)
-            if last_code == 0:
-                return 0
-            if term:
-                term.warning(f"npm exited {last_code} with {mirror.get('id')}; trying the next healthy mirror")
-        return last_code
+            code = _run(cmd)
+            if code and term:
+                term.warning(f"npm exited {code} with {mirror.get('id')}; trying the next healthy mirror")
+            return code
+
+        return _run_with_mirror_retry(cfg, registry, "npm", term, attempt)
 
     mirror = _select_best(cfg, registry, "npm", term)
     args = _inject_npm_registry_args(user_args, mirror["url"])
@@ -263,8 +295,6 @@ def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
     codename = prov._detect_codename()
     components = " ".join(prov._components())
     architecture = prov._detect_arch()
-    ranked = _rank_mirrors(cfg, registry, "debian", term)
-
     apt_get = shutil.which("apt-get") or "apt-get"
     # Prefer running apt-get; prepend sudo when not root.
     prefix: list[str] = []
@@ -280,8 +310,11 @@ def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
         "update", "install", "reinstall", "upgrade", "dist-upgrade",
         "full-upgrade", "build-dep", "download", "source",
     }
-    last_update_code = 1
-    for idx, candidate in enumerate(ranked, 1):
+
+    if not needs_update:
+        return _run(prefix + [apt_get, *user_args])
+
+    def attempt(candidate: dict[str, Any], idx: int, total: int) -> int:
         mirror = candidate["mirror"]
         url = mirror["url"].rstrip("/")
         line = f"deb [arch={architecture}] {url} {codename} {components}\n"
@@ -299,14 +332,14 @@ def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
             if needs_update:
                 upd = prefix + [apt_get, *base_opts, "update", "-qq"]
                 if term and not getattr(term, "quiet", False):
-                    term.info(f"[{idx}/{len(ranked)}] Updating indexes from {mirror.get('name', url)}")
+                    term.info(f"[{idx}/{total}] Updating indexes from {mirror.get('name', url)}")
                 if term and getattr(term, "verbose", False):
                     term.info(" ".join(upd))
-                last_update_code = _run(upd)
-                if last_update_code != 0:
+                update_code = _run(upd)
+                if update_code != 0:
                     if term:
                         term.warning(f"APT update failed with {mirror.get('id')}; trying the next compatible mirror")
-                    continue
+                    return update_code
                 if verb == "update":
                     return 0
 
@@ -314,20 +347,11 @@ def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
             if term and getattr(term, "verbose", False):
                 term.info(" ".join(cmd))
             code = _run(cmd)
-            if code == 0:
-                return 0
-            if idx < len(ranked) and verb in {
-                "install", "reinstall", "upgrade", "dist-upgrade", "full-upgrade",
-                "build-dep", "download", "source",
-            }:
-                if term:
-                    term.warning(f"APT command failed with {mirror.get('id')}; retrying after refreshing from the next compatible mirror")
-                continue
+            if code and term:
+                term.warning(f"APT command failed with {mirror.get('id')}; trying the next compatible mirror")
             return code
 
-    if term:
-        term.error(f"APT could not update {codename} from any compatible mirror.")
-    return last_update_code
+    return _run_with_mirror_retry(cfg, registry, "debian", term, attempt)
 
 
 def _mirror_host(url: str) -> str:
@@ -435,25 +459,23 @@ def run_docker(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int
 
     docker = shutil.which("docker") or "docker"
     if user_args[0].lower() == "pull":
-        # A registry endpoint can be live while a specific repository is absent.
-        # Pull is safe to retry: completed layers remain cached by the daemon.
-        ranked = _rank_mirrors(cfg, registry, "docker", term)
-        last_code = 1
-        for idx, candidate in enumerate(ranked, 1):
+        # Keep cycling because registry health probes cannot guarantee that a
+        # particular image is present on every mirror.
+        def attempt(candidate: dict[str, Any], idx: int, total: int) -> int:
             mirror = candidate["mirror"]
             host = _mirror_host(mirror["url"])
             rewritten = _rewrite_docker_args(user_args, host)
             cmd = [docker, *rewritten]
             if term and not getattr(term, "quiet", False):
-                term.info(f"[{idx}/{len(ranked)}] Pulling through {mirror.get('name', host)}")
+                term.info(f"[{idx}/{total}] Pulling through {mirror.get('name', host)}")
             if term and getattr(term, "verbose", False):
                 term.info("Rewritten command: " + " ".join(cmd))
-            last_code = _run(cmd)
-            if last_code == 0:
-                return 0
-            if term:
+            code = _run(cmd)
+            if code and term:
                 term.warning(f"Docker pull failed with {mirror.get('id')}; trying the next healthy mirror")
-        return last_code
+            return code
+
+        return _run_with_mirror_retry(cfg, registry, "docker", term, attempt)
 
     # Registry selection is irrelevant for local inspection and commands that
     # do not fetch a Docker Hub image. Preserve Docker's own semantics directly.
