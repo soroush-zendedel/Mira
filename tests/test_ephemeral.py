@@ -8,6 +8,8 @@ from unittest import mock
 
 from mira.services.ephemeral import (
     _inject_npm_registry_args,
+    _inject_pacman_db_refresh,
+    _pacman_has_refresh,
     _rewrite_docker_image,
     _rewrite_docker_args,
     _strip_double_dash,
@@ -182,3 +184,29 @@ class PackageCommandFailoverTest(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertIn("bad.example/library/nginx", run.call_args_list[0].args[0])
         self.assertIn("good.example/library/nginx", run.call_args_list[1].args[0])
+
+
+class PacmanRefreshInjectTest(unittest.TestCase):
+    def test_injects_y_into_short_sync(self):
+        self.assertEqual(_inject_pacman_db_refresh(["-S", "cowsay"]), ["-Sy", "cowsay"])
+        self.assertEqual(_inject_pacman_db_refresh(["-Ss", "bash"]), ["-Sys", "bash"])
+        self.assertEqual(_inject_pacman_db_refresh(["-Su"]), ["-Syu"])
+
+    def test_leaves_existing_refresh_alone(self):
+        self.assertEqual(_inject_pacman_db_refresh(["-Sy", "cowsay"]), ["-Sy", "cowsay"])
+        self.assertEqual(_inject_pacman_db_refresh(["-Syu"]), ["-Syu"])
+        self.assertEqual(
+            _inject_pacman_db_refresh(["--sync", "--refresh", "cowsay"]),
+            ["--sync", "--refresh", "cowsay"],
+        )
+
+    def test_long_sync_gets_refresh(self):
+        self.assertEqual(
+            _inject_pacman_db_refresh(["--sync", "cowsay"]),
+            ["--sync", "--refresh", "cowsay"],
+        )
+
+    def test_has_refresh_helper(self):
+        self.assertTrue(_pacman_has_refresh(["-Syu"]))
+        self.assertTrue(_pacman_has_refresh(["--refresh"]))
+        self.assertFalse(_pacman_has_refresh(["-S", "cowsay"]))

@@ -498,6 +498,54 @@ def run_docker(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int
     return _run(cmd)
 
 
+
+def _pacman_has_refresh(user_args: list[str]) -> bool:
+    """True when the user already asked pacman to refresh package databases."""
+    for arg in user_args:
+        if arg in {"--refresh", "-y"}:
+            return True
+        if arg.startswith("--"):
+            continue
+        if arg.startswith("-") and "y" in arg[1:].split("=", 1)[0]:
+            return True
+    return False
+
+
+def _inject_pacman_db_refresh(user_args: list[str]) -> list[str]:
+    """
+    Ensure sync operations refresh package DBs from the selected mirror.
+
+    Ephemeral runs use a temporary mirrorlist. Without ``-y``/``--refresh``,
+    pacman only consults local DB files under /var/lib/pacman/sync. On a fresh
+    system (or after those files were removed) that yields:
+      warning: database file for 'core' does not exist (use '-Sy' to download)
+      error: target not found: <pkg>
+
+    Inject a database refresh for ``-S`` / ``--sync`` when the user did not
+    already request one. Leaves non-sync commands unchanged.
+    """
+    if _pacman_has_refresh(user_args):
+        return list(user_args)
+
+    out = list(user_args)
+    for i, arg in enumerate(out):
+        if arg == "--sync":
+            out.insert(i + 1, "--refresh")
+            return out
+        if arg.startswith("--"):
+            continue
+        if arg.startswith("-") and "S" in arg[1:].split("=", 1)[0]:
+            # Combined short options: -S -> -Sy, -Ss -> -Ssy, -Su -> -Syu
+            body = arg[1:]
+            # Prefer placing y immediately after S for readability (-Sy, -Ssy)
+            idx = body.find("S")
+            if idx >= 0 and "y" not in body:
+                body = body[: idx + 1] + "y" + body[idx + 1 :]
+                out[i] = "-" + body
+            return out
+    return out
+
+
 def run_pacman(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
     """Run pacman sync operations with a temporary mirrorlist in a cloned config."""
     user_args = _strip_double_dash(list(user_args))
@@ -533,9 +581,13 @@ def run_pacman(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int
             cloned = include_re.sub(lambda m: m.group(1) + str(mirrorlist), config)
             temp_config = temp_dir / "pacman.conf"
             temp_config.write_text(cloned, encoding="utf-8")
-            cmd = [pacman, "--config", str(temp_config), *user_args]
+            # Refresh DBs from this mirror when needed (-S without -y, etc.)
+            effective_args = _inject_pacman_db_refresh(user_args)
+            cmd = [pacman, "--config", str(temp_config), *effective_args]
             if term and not getattr(term, "quiet", False):
                 term.info(f"[{idx}/{total}] Running pacman through {mirror.get('name', mirror['url'])} (temporary config)")
+                if effective_args != user_args:
+                    term.info("Refreshing package databases from this mirror (-y) for the ephemeral run.")
             if term and getattr(term, "verbose", False):
                 term.info("Command: " + " ".join(cmd))
             return _run(cmd)
