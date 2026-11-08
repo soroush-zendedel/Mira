@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import socket
 import ssl
 import time
@@ -14,6 +15,77 @@ from mira.constants import DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT
 from mira.exceptions import NetworkError, ValidationError
 
 ProgressCallback = Callable[[int, Optional[int]], None]
+
+# Common system CA bundle locations (Linux distros, macOS Homebrew, etc.).
+# PyInstaller one-file builds often cannot locate OpenSSL's compiled-in defaults,
+# which surfaces as CERTIFICATE_VERIFY_FAILED on otherwise healthy systems.
+_SYSTEM_CA_CANDIDATES = (
+    "/etc/ssl/certs/ca-certificates.crt",  # Debian/Ubuntu/Arch (ca-certificates)
+    "/etc/pki/tls/certs/ca-bundle.crt",  # RHEL/CentOS/Fedora
+    "/etc/ssl/cert.pem",  # Alpine, some BSDs, generic OpenSSL
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  # Fedora/RHEL trust extract
+    "/usr/local/etc/openssl@3/cert.pem",  # Homebrew OpenSSL 3 (macOS)
+    "/usr/local/etc/openssl/cert.pem",  # Homebrew OpenSSL
+    "/etc/ssl/ca-bundle.pem",
+)
+
+
+def _iter_ca_file_candidates() -> list[str]:
+    """Ordered list of CA bundle paths to try (env overrides first)."""
+    candidates: list[str] = []
+    for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        value = os.environ.get(key)
+        if value:
+            candidates.append(value)
+    try:
+        defaults = ssl.get_default_verify_paths()
+        for path in (defaults.cafile, defaults.openssl_cafile):
+            if path:
+                candidates.append(path)
+    except Exception:
+        pass
+    candidates.extend(_SYSTEM_CA_CANDIDATES)
+    # De-duplicate while preserving order
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for path in candidates:
+        if path not in seen:
+            seen.add(path)
+            ordered.append(path)
+    return ordered
+
+
+def build_ssl_context() -> ssl.SSLContext:
+    """
+    Build a verifying SSL context that works for both normal Python installs
+    and frozen (PyInstaller) binaries on Linux.
+
+    Never disables certificate verification. If no CA bundle can be loaded the
+    returned context still uses the library defaults so the underlying error
+    remains visible to the caller.
+    """
+    ctx = ssl.create_default_context()
+    for path in _iter_ca_file_candidates():
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            ctx.load_verify_locations(cafile=path)
+            return ctx
+        except OSError:
+            continue
+    # Fall back to default context (may still work on Windows cert store / macOS)
+    return ctx
+
+
+# Module-level context reused across requests (CA paths do not change at runtime).
+_SSL_CONTEXT: ssl.SSLContext | None = None
+
+
+def _ssl_context() -> ssl.SSLContext:
+    global _SSL_CONTEXT
+    if _SSL_CONTEXT is None:
+        _SSL_CONTEXT = build_ssl_context()
+    return _SSL_CONTEXT
 
 
 def validate_url(url: str, allowed_schemes: tuple[str, ...] = ("https",)) -> urllib.parse.ParseResult:
@@ -37,6 +109,21 @@ def _parse_content_length(headers) -> Optional[int]:
         return int(raw)
     except (TypeError, ValueError):
         return None
+
+
+def _ssl_help_message(url: str, reason: object) -> str:
+    reason_text = str(reason)
+    if "CERTIFICATE_VERIFY_FAILED" in reason_text or "certificate verify failed" in reason_text.lower():
+        return (
+            f"URL error for {url}: {reason}\n"
+            "TLS certificate verification failed. On Linux install system CA certificates:\n"
+            "  Arch:            sudo pacman -S ca-certificates\n"
+            "  Debian/Ubuntu:   sudo apt-get install ca-certificates\n"
+            "  Fedora/RHEL:     sudo dnf install ca-certificates\n"
+            "Then retry. You can also point Mira at a bundle explicitly:\n"
+            "  export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
+        )
+    return f"URL error for {url}: {reason}"
 
 
 def fetch_url(
@@ -66,7 +153,11 @@ def fetch_url(
     req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
     start = time.perf_counter()
     try:
-        with urllib.request.urlopen(req, timeout=timeout + read_timeout) as resp:
+        with urllib.request.urlopen(
+            req,
+            timeout=timeout + read_timeout,
+            context=_ssl_context(),
+        ) as resp:
             status = getattr(resp, "status", None) or resp.getcode()
             hdrs = dict(resp.headers.items()) if resp.headers else {}
             total = _parse_content_length(resp.headers)
@@ -108,11 +199,11 @@ def fetch_url(
             pass
         return int(e.code), dict(e.headers.items()) if e.headers else {}, body, latency_ms
     except urllib.error.URLError as e:
-        raise NetworkError(f"URL error for {url}: {e.reason}") from e
+        raise NetworkError(_ssl_help_message(url, e.reason)) from e
     except socket.timeout as e:
         raise NetworkError(f"Timeout fetching {url}") from e
     except ssl.SSLError as e:
-        raise NetworkError(f"SSL error for {url}: {e}") from e
+        raise NetworkError(_ssl_help_message(url, e)) from e
     except OSError as e:
         raise NetworkError(f"OS/network error for {url}: {e}") from e
 
