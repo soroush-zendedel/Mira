@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "country": "ch",
+  "provider": "pacman",
+  "mirrors": [
+    {
+      "id": "ch-arch-linux",
+      "name": "mirror.arch-linux.ch",
+      "url": "https://mirror.arch-linux.ch/archlinux",
+      "enabled": true,
+      "priority": 10,
+      "source": "https://archlinux.org/mirrors/status/"
+    },
+    {
+      "id": "ch-adfinis",
+      "name": "Adfinis Exoscale",
+      "url": "https://pkg.adfinis-on-exoscale.ch/archlinux-pkgbuild",
+      "enabled": true,
+      "priority": 20,
+      "source": "https://archlinux.org/mirrors/status/"
+    }
+  ]
+}

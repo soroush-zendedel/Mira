@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from mira.providers.debian import DebianProvider
 from mira.providers.docker import DockerProvider
 from mira.providers.npm import NpmProvider
 from mira.providers.pypi import PyPIProvider
+from mira.providers.pacman import PacmanProvider
 from mira.services.backup import BackupService
 
 
@@ -33,6 +35,7 @@ def _select_best(cfg, registry: MirrorRegistry, provider_name: str, term) -> dic
         "npm": NpmProvider(registry, backup),
         "debian": DebianProvider(registry, backup),
         "docker": DockerProvider(registry, backup),
+        "pacman": PacmanProvider(registry, backup),
     }
     prov = providers[provider_name]
     countries = cfg.countries()
@@ -66,6 +69,7 @@ def _rank_mirrors(cfg, registry: MirrorRegistry, provider_name: str, term) -> li
         "npm": NpmProvider(registry, backup),
         "debian": DebianProvider(registry, backup),
         "docker": DockerProvider(registry, backup),
+        "pacman": PacmanProvider(registry, backup),
     }
     prov = providers[provider_name]
     countries = cfg.countries()
@@ -492,3 +496,48 @@ def run_docker(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int
     if term and not getattr(term, "quiet", False) and rewritten != user_args:
         term.info("Rewritten command: " + " ".join(cmd))
     return _run(cmd)
+
+
+def run_pacman(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
+    """Run pacman sync operations with a temporary mirrorlist in a cloned config."""
+    user_args = _strip_double_dash(list(user_args))
+    pacman = shutil.which("pacman") or "pacman"
+    # Query/local database operations do not contact repositories.
+    if not any(
+        arg == "--sync"
+        or (arg.startswith("-") and "S" in arg[1:].split("=", 1)[0])
+        for arg in user_args
+    ):
+        return _run([pacman, *user_args])
+    if any(arg in {"--config", "-C"} or arg.startswith("--config=") for arg in user_args):
+        return _run([pacman, *user_args])
+
+    def attempt(candidate: dict[str, Any], idx: int, total: int) -> int:
+        mirror = candidate["mirror"]
+        config_path = Path("/etc/pacman.conf")
+        try:
+            config = config_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            if term:
+                term.error(f"Cannot read {config_path}: {exc}")
+            return 2
+        include_re = re.compile(r"^(\s*Include\s*=\s*)([^#\r\n]*pacman\.d[/\\]mirrorlist[^#\r\n]*)", re.IGNORECASE | re.MULTILINE)
+        if not include_re.search(config):
+            if term:
+                term.error("/etc/pacman.conf has no active Include for pacman.d/mirrorlist; cannot safely redirect pacman.")
+            return 2
+        with tempfile.TemporaryDirectory(prefix="mira-pacman-") as td:
+            temp_dir = Path(td)
+            mirrorlist = temp_dir / "mirrorlist"
+            mirrorlist.write_text(f"Server = {mirror['url'].rstrip('/')}/$repo/os/$arch\n", encoding="utf-8")
+            cloned = include_re.sub(lambda m: m.group(1) + str(mirrorlist), config)
+            temp_config = temp_dir / "pacman.conf"
+            temp_config.write_text(cloned, encoding="utf-8")
+            cmd = [pacman, "--config", str(temp_config), *user_args]
+            if term and not getattr(term, "quiet", False):
+                term.info(f"[{idx}/{total}] Running pacman through {mirror.get('name', mirror['url'])} (temporary config)")
+            if term and getattr(term, "verbose", False):
+                term.info("Command: " + " ".join(cmd))
+            return _run(cmd)
+
+    return _run_with_mirror_retry(cfg, registry, "pacman", term, attempt)

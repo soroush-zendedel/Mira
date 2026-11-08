@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "country": "de",
+  "provider": "pacman",
+  "mirrors": [
+    {
+      "id": "de-berlin-pkgbuild",
+      "name": "Berlin pkgbuild mirror",
+      "url": "https://berlin.mirror.pkgbuild.com",
+      "enabled": true,
+      "priority": 10,
+      "source": "https://archlinux.org/mirrors/status/"
+    },
+    {
+      "id": "de-moson",
+      "name": "mirror.moson.org",
+      "url": "https://mirror.moson.org/arch",
+      "enabled": true,
+      "priority": 20,
+      "source": "https://archlinux.org/mirrors/status/"
+    }
+  ]
+}

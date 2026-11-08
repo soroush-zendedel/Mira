@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "country": "ww",
+  "provider": "pacman",
+  "mirrors": [
+    {
+      "id": "ww-geo-pkgbuild",
+      "name": "Arch Geo mirror (global endpoint)",
+      "url": "https://geo.mirror.pkgbuild.com",
+      "enabled": true,
+      "priority": 10,
+      "source": "https://archlinux.org/mirrors/status/"
+    },
+    {
+      "id": "ww-fastly-pkgbuild",
+      "name": "Arch Fastly mirror (global endpoint)",
+      "url": "https://fastly.mirror.pkgbuild.com",
+      "enabled": true,
+      "priority": 20,
+      "source": "https://archlinux.org/mirrors/status/"
+    }
+  ]
+}

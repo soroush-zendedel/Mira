@@ -39,7 +39,7 @@ SCORE_WEIGHTS = {
 MAX_LATENCY_MS = 5000.0  # beyond this is considered very slow
 
 # Providers
-SUPPORTED_PROVIDERS = ("pypi", "npm", "debian", "docker")
+SUPPORTED_PROVIDERS = ("pypi", "npm", "debian", "docker", "pacman")
 
 # Config paths (relative names)
 CONFIG_DIR_NAME = "mira"

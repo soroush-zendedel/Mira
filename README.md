@@ -9,6 +9,7 @@ Mira discovers, evaluates, selects, and configures software repository mirrors f
 - **PyPI** (pip)
 - **npm** (npm CLI)
 - **Debian APT**
+- **Arch Linux pacman**
 - **Docker Engine** registry mirrors
 
 Zero third-party Python **runtime** dependencies (stdlib only).
@@ -203,7 +204,7 @@ mira npm view express version
 
 Mira's current registry list and detailed npm notes are in [docs/npm.md](docs/npm.md).
 
-### Docker / APT (need elevation)
+### Docker / APT / pacman (need elevation)
 
 ```bash
 mira docker set --dry-run
@@ -212,14 +213,17 @@ sudo systemctl restart docker   # Mira does not restart Docker for you
 
 mira debian set --dry-run
 sudo mira debian set
+
+mira pacman set --dry-run
+sudo mira pacman set
 ```
 
 See [docs/privileges.md](docs/privileges.md).
 
 ### Everyday provider workflow
 
-The same management actions are available for `pypi`, `npm`, `debian`, and
-`docker`:
+The same management actions are available for `pypi`, `npm`, `debian`,
+`docker`, and `pacman`:
 
 ```sh
 mira <provider> list
@@ -257,6 +261,23 @@ ranking can be tuned with `mira config set strategy balanced` (or `fastest` or
 APT and Docker write system-level configuration and usually require elevation
 for `set`. Mira backs up files before writing and does not restart Docker
 automatically; see [docs/privileges.md](docs/privileges.md).
+
+For Arch Linux, `mira pacman set` prepends a Mira-managed HTTPS server block to
+`/etc/pacman.d/mirrorlist`, backs up an existing file, and leaves the remaining
+mirrorlist intact as fallbacks. `mira pacman reset` removes only that block.
+Both operations normally require `sudo`. Health checks use Arch's `lastsync`
+timestamp and reject mirrors more than seven days out of date. Mira never
+changes pacman's `SigLevel` or disables package signature verification. The
+Arch mirror database includes official global GeoIP endpoints, which remain
+available under any Mira country filter; it also includes regional mirrors for
+the United States, Switzerland, and Germany.
+
+Pacman sync operations can use ranked mirrors for one invocation:
+`mira pacman -Syu` or `mira pacman -S package`. Mira clones
+`/etc/pacman.conf` to a temporary directory and redirects its active
+`pacman.d/mirrorlist` include; repository definitions and signature checks
+remain in effect, and persistent configuration is not changed. Local queries
+such as `mira pacman -Q` run directly.
 
 ---
 

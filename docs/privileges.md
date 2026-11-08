@@ -51,6 +51,21 @@ overwrite any original path that has been recreated. Keyring files are not
 changed. Review the `set --dry-run` output before applying this system-wide
 source switch.
 
+## Arch Linux pacman (`/etc/pacman.d/mirrorlist`)
+
+```bash
+mira pacman set --dry-run
+sudo mira pacman set
+mira pacman -Syu
+```
+
+Persistent `set` backs up the current mirrorlist and adds a Mira-managed HTTPS
+server block at the top; `reset` removes that block while preserving other
+entries. `mira pacman -S...` uses a temporary copy of `/etc/pacman.conf` that
+redirects its mirrorlist include for that invocation. It preserves pacman's
+repository configuration and signature policy. Root privileges are still
+required for package operations that write system files.
+
 ## PyPI
 
 | Scope | Elevation |

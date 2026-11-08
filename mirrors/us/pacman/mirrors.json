@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "country": "us",
+  "provider": "pacman",
+  "mirrors": [
+    {
+      "id": "us-kernel-org",
+      "name": "mirrors.kernel.org",
+      "url": "https://mirrors.kernel.org/archlinux",
+      "enabled": true,
+      "priority": 10,
+      "source": "https://archlinux.org/mirrors/status/"
+    },
+    {
+      "id": "us-rackspace",
+      "name": "Rackspace IAD",
+      "url": "https://iad.mirror.rackspace.com/archlinux",
+      "enabled": true,
+      "priority": 20,
+      "source": "https://archlinux.org/mirrors/status/"
+    }
+  ]
+}

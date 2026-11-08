@@ -21,12 +21,13 @@ from mira.providers.debian import DebianProvider
 from mira.providers.docker import DockerProvider
 from mira.providers.pypi import PyPIProvider
 from mira.providers.npm import NpmProvider
+from mira.providers.pacman import PacmanProvider
 from mira.services.backup import BackupService
 from mira.utils.terminal import Terminal
 from mira.utils.path_setup import maybe_offer_path_setup
 from mira.services.uninstaller import uninstall as run_uninstall
 from mira.services.verify import verify_provider
-from mira.services.ephemeral import run_pip, run_apt, run_docker, run_npm
+from mira.services.ephemeral import run_pip, run_apt, run_docker, run_npm, run_pacman
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -53,12 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_apt.add_argument("apt_args", nargs=argparse.REMAINDER, help="Arguments passed to apt-get")
     p_reset = sub.add_parser(
         "reset",
-        help="Restore all providers (pypi/npm/debian/docker) to default upstream configuration",
+        help="Restore all providers to default upstream configuration",
     )
     p_reset.add_argument("--dry-run", action="store_true", help="Show what would be changed")
     p_reset.add_argument(
         "--provider",
-        choices=["pypi", "npm", "debian", "docker", "all"],
+        choices=["pypi", "npm", "debian", "docker", "pacman", "all"],
         default="all",
         help="Limit reset to one provider (default: all)",
     )
@@ -67,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # check
     p_check = sub.add_parser("check", help="Check mirror health")
-    p_check.add_argument("provider", nargs="?", choices=["pypi", "npm", "debian", "docker"], help="Limit to one provider")
+    p_check.add_argument("provider", nargs="?", choices=["pypi", "npm", "debian", "docker", "pacman"], help="Limit to one provider")
     p_check.add_argument("--refresh", action="store_true", help="Ignore cache and re-check")
 
     # config
@@ -81,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_set.add_argument("value")
 
     # provider commands factory
-    for prov in ("pypi", "npm", "debian", "docker"):
+    for prov in ("pypi", "npm", "debian", "docker", "pacman"):
         p = sub.add_parser(prov, help=f"{prov} provider commands")
         ps = p.add_subparsers(dest="prov_cmd")
         ps.add_parser("list", help="List known mirrors")
@@ -105,6 +106,7 @@ def _make_providers(cfg: Config, registry: MirrorRegistry, backup: BackupService
         "npm": NpmProvider(registry, backup),
         "debian": DebianProvider(registry, backup),
         "docker": DockerProvider(registry, backup),
+        "pacman": PacmanProvider(registry, backup),
     }
 
 
@@ -367,11 +369,20 @@ def _should_run_npm_passthrough(raw: list[str]) -> bool:
     )
 
 
+def _should_run_pacman_passthrough(raw: list[str]) -> bool:
+    """Reserve Mira's provider actions and forward pacman's other commands."""
+    return (
+        len(raw) > 1
+        and raw[0].lower() == "pacman"
+        and raw[1].lower() not in {"list", "check", "current", "status", "set", "reset", "-h", "--help"}
+    )
+
+
 def cmd_reset(term: Terminal, cfg: Config, registry: MirrorRegistry, args: argparse.Namespace) -> int:
     """Reset one or all providers back to default upstream configuration."""
     dry = getattr(args, "dry_run", False)
     which = getattr(args, "provider", "all") or "all"
-    targets = ["pypi", "npm", "debian", "docker"] if which == "all" else [which]
+    targets = ["pypi", "npm", "debian", "docker", "pacman"] if which == "all" else [which]
 
     backup = BackupService(cfg.backups_dir)
     providers = _make_providers(cfg, registry, backup)
@@ -459,11 +470,30 @@ def main(argv: list[str] | None = None) -> int:
         except MiraError as e:
             term.error(str(e))
             return e.code
+
         registry = MirrorRegistry(cfg.database_dir)
         try:
             return run_npm(cfg, registry, raw[1:], term)
         except NoHealthyMirrorError as e:
             term.error(str(e) or "No healthy npm mirror")
+            return 7
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
+
+    if _should_run_pacman_passthrough(raw):
+        term = Terminal(use_color=True, quiet=False, verbose=False)
+        cfg = Config()
+        try:
+            cfg.load()
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
+        registry = MirrorRegistry(cfg.database_dir)
+        try:
+            return run_pacman(cfg, registry, raw[1:], term)
+        except NoHealthyMirrorError as e:
+            term.error(str(e) or "No healthy Arch mirror")
             return 7
         except MiraError as e:
             term.error(str(e))
@@ -578,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(term, cfg, registry, getattr(args, "provider", None), getattr(args, "refresh", False))
     if cmd == "config":
         return cmd_config(term, cfg, args)
-    if cmd in ("pypi", "npm", "debian", "docker"):
+    if cmd in ("pypi", "npm", "debian", "docker", "pacman"):
         action = getattr(args, "prov_cmd", None)
         if not action:
             parser.parse_args([cmd, "--help"])

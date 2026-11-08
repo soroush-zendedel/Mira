@@ -204,6 +204,17 @@ def verify_npm(mirror: dict[str, Any], *, timeout: float = 20.0) -> dict[str, An
         return {"ok": False, "method": f"GET {probe}", "detail": str(e), "error": str(e)}
 
 
+def verify_pacman(mirror: dict[str, Any], *, timeout: float = 20.0) -> dict[str, Any]:
+    """Confirm the Arch core repository database is readable over HTTPS."""
+    from mira.providers.pacman import PacmanProvider
+
+    result = PacmanProvider(None, None).check_mirror(mirror)
+    ok = bool(result.get("available") and result.get("valid"))
+    detail = result.get("error") or "Arch mirror lastsync metadata is recent"
+    return {"ok": ok, "method": "Arch mirror lastsync probe", "detail": detail,
+            **({} if ok else {"error": detail})}
+
+
 def verify_provider(provider_name: str, mirror: dict[str, Any]) -> dict[str, Any]:
     if provider_name == "pypi":
         return verify_pypi(mirror)
@@ -213,4 +224,6 @@ def verify_provider(provider_name: str, mirror: dict[str, Any]) -> dict[str, Any
         return verify_docker(mirror)
     if provider_name == "npm":
         return verify_npm(mirror)
+    if provider_name == "pacman":
+        return verify_pacman(mirror)
     return {"ok": False, "error": f"no verifier for {provider_name}"}

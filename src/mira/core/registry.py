@@ -56,6 +56,10 @@ class MirrorRegistry:
             target_countries = all_countries
         else:
             target_countries = [c for c in all_countries if c in allowed_countries]
+            # Worldwide mirrors are valid fallback candidates regardless of the
+            # user's country filter (for example, GeoIP-backed Arch endpoints).
+            if "ww" in all_countries and "ww" not in target_countries:
+                target_countries.append("ww")
 
         target_providers = [provider] if provider else manifest.get("providers", [])
 
