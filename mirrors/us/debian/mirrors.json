@@ -5,10 +5,66 @@
   "mirrors": [
     {
       "id": "debian-official",
-      "name": "Debian Official",
+      "name": "Debian Official (deb.debian.org)",
       "url": "https://deb.debian.org/debian",
       "enabled": true,
       "priority": 100
+    },
+    {
+      "id": "debian-cdn-aws",
+      "name": "Debian CDN (AWS)",
+      "url": "https://cdn-aws.deb.debian.org/debian",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "kernel-debian",
+      "name": "Kernel.org Debian",
+      "url": "https://mirrors.edge.kernel.org/debian",
+      "enabled": true,
+      "priority": 92
+    },
+    {
+      "id": "kernel-ubuntu",
+      "name": "Kernel.org Ubuntu",
+      "url": "https://mirrors.edge.kernel.org/ubuntu",
+      "enabled": true,
+      "priority": 91
+    },
+    {
+      "id": "berkeley-debian",
+      "name": "OCF Berkeley Debian",
+      "url": "https://mirrors.ocf.berkeley.edu/debian",
+      "enabled": true,
+      "priority": 88
+    },
+    {
+      "id": "berkeley-ubuntu",
+      "name": "OCF Berkeley Ubuntu",
+      "url": "https://mirrors.ocf.berkeley.edu/ubuntu",
+      "enabled": true,
+      "priority": 87
+    },
+    {
+      "id": "rackspace-debian",
+      "name": "Rackspace Debian",
+      "url": "https://mirror.rackspace.com/debian",
+      "enabled": true,
+      "priority": 85
+    },
+    {
+      "id": "rackspace-ubuntu",
+      "name": "Rackspace Ubuntu",
+      "url": "https://mirror.rackspace.com/ubuntu",
+      "enabled": true,
+      "priority": 84
+    },
+    {
+      "id": "princeton-ubuntu",
+      "name": "Princeton Ubuntu",
+      "url": "https://mirror.math.princeton.edu/pub/ubuntu",
+      "enabled": true,
+      "priority": 80
     }
   ]
 }

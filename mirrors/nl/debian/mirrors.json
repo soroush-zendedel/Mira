@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "country": "nl",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "nluug-debian",
+      "name": "NLUUG Debian",
+      "url": "https://ftp.nluug.nl/debian",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "nluug-ubuntu",
+      "name": "NLUUG Ubuntu",
+      "url": "https://ftp.nluug.nl/os/Linux/distr/ubuntu",
+      "enabled": true,
+      "priority": 93
+    },
+    {
+      "id": "leaseweb-ubuntu",
+      "name": "LeaseWeb NL Ubuntu",
+      "url": "https://mirror.nl.leaseweb.net/ubuntu",
+      "enabled": true,
+      "priority": 90
+    },
+    {
+      "id": "wearetriple-ubuntu",
+      "name": "WeAreTriple Ubuntu",
+      "url": "https://ubuntu.mirror.wearetriple.com/ubuntu",
+      "enabled": true,
+      "priority": 85
+    }
+  ]
+}

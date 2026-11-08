@@ -4,11 +4,39 @@
   "provider": "debian",
   "mirrors": [
     {
-      "id": "debian-de",
-      "name": "Debian FTP Germany",
-      "url": "https://ftp.de.debian.org/debian",
+      "id": "fau-debian",
+      "name": "FAU Erlangen Debian",
+      "url": "https://ftp.fau.de/debian",
       "enabled": true,
-      "priority": 90
+      "priority": 95
+    },
+    {
+      "id": "gwdg-debian",
+      "name": "GWDG Debian",
+      "url": "https://ftp.gwdg.de/debian",
+      "enabled": true,
+      "priority": 93
+    },
+    {
+      "id": "halifax-debian",
+      "name": "RWTH Aachen Debian",
+      "url": "https://ftp.halifax.rwth-aachen.de/debian",
+      "enabled": true,
+      "priority": 92
+    },
+    {
+      "id": "halifax-ubuntu",
+      "name": "RWTH Aachen Ubuntu",
+      "url": "https://ftp.halifax.rwth-aachen.de/ubuntu",
+      "enabled": true,
+      "priority": 91
+    },
+    {
+      "id": "iphh-debian",
+      "name": "IPHH Debian",
+      "url": "https://debian.mirror.iphh.net/debian",
+      "enabled": true,
+      "priority": 88
     }
   ]
 }

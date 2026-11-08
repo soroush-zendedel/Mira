@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "country": "ww",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "ftp-debian-org",
+      "name": "ftp.debian.org",
+      "url": "https://ftp.debian.org/debian",
+      "enabled": true,
+      "priority": 100
+    },
+    {
+      "id": "ubuntu-archive",
+      "name": "Ubuntu Official Archive",
+      "url": "https://archive.ubuntu.com/ubuntu",
+      "enabled": true,
+      "priority": 100
+    },
+    {
+      "id": "ubuntu-security",
+      "name": "Ubuntu Security",
+      "url": "https://security.ubuntu.com/ubuntu",
+      "enabled": true,
+      "priority": 95
+    }
+  ]
+}

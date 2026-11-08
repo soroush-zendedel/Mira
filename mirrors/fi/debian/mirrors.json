@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "fi",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "funet-debian",
+      "name": "FUNET Debian",
+      "url": "https://ftp.funet.fi/pub/linux/mirrors/debian",
+      "enabled": true,
+      "priority": 95
+    }
+  ]
+}

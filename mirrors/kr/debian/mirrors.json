@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "kr",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "kaist-ubuntu",
+      "name": "KAIST Ubuntu",
+      "url": "https://ftp.kaist.ac.kr/ubuntu",
+      "enabled": true,
+      "priority": 95
+    }
+  ]
+}

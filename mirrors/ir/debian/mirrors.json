@@ -4,43 +4,71 @@
   "provider": "debian",
   "mirrors": [
     {
-      "id": "famaserver-debian",
-      "name": "FamaServer Debian (official list)",
-      "url": "https://mirror.famaserver.com/debian",
+      "id": "linuxmirrors-ubuntu",
+      "name": "LinuxMirrors.ir Ubuntu",
+      "url": "https://linuxmirrors.ir/ubuntu",
+      "enabled": true,
+      "priority": 96
+    },
+    {
+      "id": "repo-linuxmirrors-ubuntu",
+      "name": "repo.linuxmirrors.ir Ubuntu",
+      "url": "https://repo.linuxmirrors.ir/ubuntu",
       "enabled": true,
       "priority": 95
+    },
+    {
+      "id": "famaserver-debian",
+      "name": "FamaServer Debian",
+      "url": "https://mirror.famaserver.com/debian",
+      "enabled": true,
+      "priority": 90
     },
     {
       "id": "arvan-debian",
       "name": "ArvanCloud Debian",
       "url": "https://mirror.arvancloud.ir/debian",
       "enabled": true,
-      "priority": 90
+      "priority": 88
+    },
+    {
+      "id": "arvan-ubuntu",
+      "name": "ArvanCloud Ubuntu",
+      "url": "https://mirror.arvancloud.ir/ubuntu",
+      "enabled": true,
+      "priority": 87
     },
     {
       "id": "iut-debian",
-      "name": "IUT (Isfahan University of Technology)",
+      "name": "IUT Debian",
       "url": "https://repo.iut.ac.ir/debian",
       "enabled": true,
-      "priority": 88
+      "priority": 85
+    },
+    {
+      "id": "iut-ubuntu",
+      "name": "IUT Ubuntu",
+      "url": "https://repo.iut.ac.ir/ubuntu",
+      "enabled": true,
+      "priority": 84
     },
     {
       "id": "iranserver-debian",
       "name": "IranServer Debian",
       "url": "https://mirror.iranserver.com/debian",
       "enabled": true,
-      "priority": 85
+      "priority": 82
     },
     {
-      "id": "linuxmirrors-debian",
-      "name": "LinuxMirrors.ir Debian",
-      "url": "https://linuxmirrors.ir/debian",
+      "id": "iranserver-ubuntu",
+      "name": "IranServer Ubuntu",
+      "url": "https://mirror.iranserver.com/ubuntu",
       "enabled": true,
-      "priority": 80
+      "priority": 81
     },
     {
       "id": "shatel-debian",
-      "name": "Shatel Debian/Ubuntu family",
+      "name": "Shatel Debian",
       "url": "https://mirror.shatel.ir/debian",
       "enabled": true,
       "priority": 78

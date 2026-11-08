@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "country": "ca",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "uwaterloo-debian",
+      "name": "University of Waterloo Debian",
+      "url": "https://mirror.csclub.uwaterloo.ca/debian",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "uwaterloo-ubuntu",
+      "name": "University of Waterloo Ubuntu",
+      "url": "https://mirror.csclub.uwaterloo.ca/ubuntu",
+      "enabled": true,
+      "priority": 93
+    }
+  ]
+}

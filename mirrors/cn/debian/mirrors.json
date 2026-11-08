@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "country": "cn",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "tuna-debian",
+      "name": "Tsinghua TUNA Debian",
+      "url": "https://mirrors.tuna.tsinghua.edu.cn/debian",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "tuna-ubuntu",
+      "name": "Tsinghua TUNA Ubuntu",
+      "url": "https://mirrors.tuna.tsinghua.edu.cn/ubuntu",
+      "enabled": true,
+      "priority": 94
+    },
+    {
+      "id": "ustc-debian",
+      "name": "USTC Debian",
+      "url": "https://mirrors.ustc.edu.cn/debian",
+      "enabled": true,
+      "priority": 90
+    },
+    {
+      "id": "ustc-ubuntu",
+      "name": "USTC Ubuntu",
+      "url": "https://mirrors.ustc.edu.cn/ubuntu",
+      "enabled": true,
+      "priority": 89
+    }
+  ]
+}

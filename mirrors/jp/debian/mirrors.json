@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "country": "jp",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "jaist-debian",
+      "name": "JAIST Debian",
+      "url": "https://ftp.jaist.ac.jp/pub/Linux/debian",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "jaist-ubuntu",
+      "name": "JAIST Ubuntu",
+      "url": "https://ftp.jaist.ac.jp/pub/Linux/ubuntu",
+      "enabled": true,
+      "priority": 93
+    }
+  ]
+}

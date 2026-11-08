@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "ru",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "yandex-ubuntu",
+      "name": "Yandex Ubuntu",
+      "url": "https://mirror.yandex.ru/ubuntu",
+      "enabled": true,
+      "priority": 90
+    }
+  ]
+}

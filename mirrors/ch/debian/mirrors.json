@@ -4,11 +4,18 @@
   "provider": "debian",
   "mirrors": [
     {
-      "id": "debian-ch",
-      "name": "Debian Switzerland",
-      "url": "https://ftp.ch.debian.org/debian",
+      "id": "init7-debian",
+      "name": "Init7 Debian",
+      "url": "https://mirror.init7.net/debian",
       "enabled": true,
-      "priority": 85
+      "priority": 95
+    },
+    {
+      "id": "iway-debian",
+      "name": "iWay Debian",
+      "url": "https://mirror.iway.ch/debian",
+      "enabled": true,
+      "priority": 90
     }
   ]
 }

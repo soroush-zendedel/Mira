@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "country": "au",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "aarnet-debian",
+      "name": "AARNet Debian",
+      "url": "https://mirror.aarnet.edu.au/debian",
+      "enabled": true,
+      "priority": 95
+    },
+    {
+      "id": "aarnet-ubuntu",
+      "name": "AARNet Ubuntu",
+      "url": "https://mirror.aarnet.edu.au/ubuntu",
+      "enabled": true,
+      "priority": 93
+    }
+  ]
+}

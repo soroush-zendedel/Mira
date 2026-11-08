@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "country": "se",
+  "provider": "debian",
+  "mirrors": [
+    {
+      "id": "umu-debian",
+      "name": "Academic Computer Club (ACC) Debian",
+      "url": "https://ftp.acc.umu.se/debian",
+      "enabled": true,
+      "priority": 95
+    }
+  ]
+}
