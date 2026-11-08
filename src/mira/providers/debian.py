@@ -25,11 +25,23 @@ class DebianProvider(RepositoryProvider):
     APT_MAIN_SOURCES = Path("/etc/apt/sources.list")
     APT_SOURCE_PARTS = Path("/etc/apt/sources.list.d")
     MIRA_SOURCES = Path("/etc/apt/sources.list.d/mira.sources")
+    # Keep disabled sources OUT of sources.list.d so apt does not emit
+    # "Ignoring file '...mira-disabled' ... invalid filename extension".
+    DISABLED_DIR = Path("/var/lib/mira/apt-disabled")
+    # Legacy in-place suffix (older Mira versions). Still recognised on reset.
     DISABLED_SUFFIX = ".mira-disabled"
 
     def __init__(self, registry: MirrorRegistry, backup: BackupService | None = None):
         self.registry = registry
         self.backup = backup or BackupService()
+
+    def _disabled_path_for(self, source: Path) -> Path:
+        """Return the stash path for an active APT source file."""
+        source = source.resolve() if source.exists() else source
+        if source == self.APT_MAIN_SOURCES or source.name == "sources.list" and source.parent == self.APT_MAIN_SOURCES.parent:
+            return self.DISABLED_DIR / "sources.list"
+        # files under sources.list.d/
+        return self.DISABLED_DIR / "sources.list.d" / source.name
 
     def list_mirrors(self, countries: list[str] | None = None) -> list[dict[str, Any]]:
         mirrors = self.registry.list_mirrors(provider="debian", countries=countries)
@@ -127,17 +139,50 @@ class DebianProvider(RepositoryProvider):
         return sorted(files, key=lambda path: str(path))
 
     def _disabled_source_pairs(self) -> list[tuple[Path, Path]]:
-        """Find source files disabled by Mira and their original paths."""
+        """
+        Find source files disabled by Mira and their original paths.
+
+        Prefer the stash under DISABLED_DIR (current behaviour). Also recognise
+        legacy in-place renames (``*.mira-disabled`` next to the original) so
+        older installs can still be reset cleanly.
+        """
         pairs: list[tuple[Path, Path]] = []
+        seen_originals: set[Path] = set()
+
+        # Current layout: /var/lib/mira/apt-disabled/...
+        main_disabled = self.DISABLED_DIR / "sources.list"
+        if main_disabled.is_file():
+            pairs.append((self.APT_MAIN_SOURCES, main_disabled))
+            seen_originals.add(self.APT_MAIN_SOURCES)
+        parts_dir = self.DISABLED_DIR / "sources.list.d"
+        if parts_dir.is_dir():
+            for path in sorted(parts_dir.iterdir()):
+                if not path.is_file():
+                    continue
+                if path.suffix not in {".list", ".sources"}:
+                    continue
+                original = self.APT_SOURCE_PARTS / path.name
+                pairs.append((original, path))
+                seen_originals.add(original)
+
+        # Legacy layout: rename in place with .mira-disabled suffix
         if self.APT_MAIN_SOURCES.parent.is_dir():
-            paths = self.APT_MAIN_SOURCES.parent.glob(f"sources.list{self.DISABLED_SUFFIX}")
-            pairs.extend((self.APT_MAIN_SOURCES, path) for path in paths if path.is_file())
+            legacy_main = self.APT_MAIN_SOURCES.parent / f"sources.list{self.DISABLED_SUFFIX}"
+            if legacy_main.is_file() and self.APT_MAIN_SOURCES not in seen_originals:
+                pairs.append((self.APT_MAIN_SOURCES, legacy_main))
+                seen_originals.add(self.APT_MAIN_SOURCES)
         if self.APT_SOURCE_PARTS.is_dir():
-            paths = self.APT_SOURCE_PARTS.glob(f"*{self.DISABLED_SUFFIX}")
-            for path in paths:
-                original = path.with_name(path.name[:-len(self.DISABLED_SUFFIX)])
-                if original.suffix in {".list", ".sources"} and path.is_file():
-                    pairs.append((original, path))
+            for path in self.APT_SOURCE_PARTS.glob(f"*{self.DISABLED_SUFFIX}"):
+                if not path.is_file():
+                    continue
+                original = path.with_name(path.name[: -len(self.DISABLED_SUFFIX)])
+                if original.suffix not in {".list", ".sources"}:
+                    continue
+                if original in seen_originals:
+                    continue
+                pairs.append((original, path))
+                seen_originals.add(original)
+
         return sorted(pairs, key=lambda pair: str(pair[0]))
 
     def _detect_arch(self) -> str:
@@ -249,10 +294,7 @@ Architectures: {arch}
 Signed-By: {keyring}
 """
         active_sources = self._active_source_files()
-        disabled_sources = [
-            (source, source.with_name(source.name + self.DISABLED_SUFFIX))
-            for source in active_sources
-        ]
+        disabled_sources = [(source, self._disabled_path_for(source)) for source in active_sources]
         conflicts = [str(disabled) for _, disabled in disabled_sources if disabled.exists()]
         if conflicts:
             raise ProviderError(
@@ -269,6 +311,7 @@ Signed-By: {keyring}
             "dry_run": dry_run,
             "action": "disable existing APT sources and write mira.sources",
             "disabled_sources": [str(source) for source, _ in disabled_sources],
+            "disabled_stash": str(self.DISABLED_DIR),
         }
         if dry_run:
             summary["content_preview"] = content
@@ -288,7 +331,10 @@ Signed-By: {keyring}
         moved: list[tuple[Path, Path]] = []
         try:
             self.MIRA_SOURCES.parent.mkdir(parents=True, exist_ok=True)
+            self.DISABLED_DIR.mkdir(parents=True, exist_ok=True)
+            (self.DISABLED_DIR / "sources.list.d").mkdir(parents=True, exist_ok=True)
             for source, disabled in disabled_sources:
+                disabled.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(source, disabled)
                 moved.append((source, disabled))
             atomic_write(self.MIRA_SOURCES, content)

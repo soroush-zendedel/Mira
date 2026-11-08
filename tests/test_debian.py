@@ -97,6 +97,7 @@ class DebianSourceManagementTest(unittest.TestCase):
         self.parts = root / "sources.list.d"
         self.parts.mkdir(parents=True)
         self.mira = self.parts / "mira.sources"
+        self.disabled_dir = Path(self.temp.name) / "var-lib-mira-apt-disabled"
         self.old_sources = self.parts / "debian.sources"
         self.old_list = self.parts / "third-party.list"
         self.main.write_text("deb https://old.example/debian trixie main\n", encoding="utf-8")
@@ -118,10 +119,14 @@ class DebianSourceManagementTest(unittest.TestCase):
             mock.patch.object(DebianProvider, "APT_MAIN_SOURCES", self.main),
             mock.patch.object(DebianProvider, "APT_SOURCE_PARTS", self.parts),
             mock.patch.object(DebianProvider, "MIRA_SOURCES", self.mira),
+            mock.patch.object(DebianProvider, "DISABLED_DIR", self.disabled_dir),
         ]
         for patcher in self.patches:
             patcher.start()
             self.addCleanup(patcher.stop)
+
+    def _stash_for(self, path: Path) -> Path:
+        return self.provider._disabled_path_for(path)
 
     def test_set_disables_all_active_formats_and_reset_restores_exact_files(self):
         originals = {path: path.read_bytes() for path in (self.main, self.old_sources, self.old_list)}
@@ -129,7 +134,9 @@ class DebianSourceManagementTest(unittest.TestCase):
         self.assertEqual(len(result["disabled_sources"]), 3)
         for path in (self.main, self.old_sources, self.old_list):
             self.assertFalse(path.exists())
-            self.assertTrue(path.with_name(path.name + ".mira-disabled").exists())
+            self.assertTrue(self._stash_for(path).exists())
+            # Must NOT leave disabled files inside sources.list.d (apt Notice)
+            self.assertFalse(path.with_name(path.name + ".mira-disabled").exists())
         content = self.mira.read_text(encoding="utf-8")
         self.assertIn("Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg", content)
         self.assertEqual(self.provider.reset()["status"], "removed")
@@ -158,7 +165,7 @@ class DebianSourceManagementTest(unittest.TestCase):
         with self.assertRaisesRegex(ProviderError, "already occupied"):
             self.provider.reset()
         self.assertTrue(self.mira.exists())
-        self.assertTrue(self.main.with_name(self.main.name + ".mira-disabled").exists())
+        self.assertTrue(self._stash_for(self.main).exists())
 
     def test_reset_rolls_back_if_restoring_a_source_fails(self):
         self.provider.apply({"id": "mirror", "url": "https://mirror.example/debian"})
@@ -177,7 +184,7 @@ class DebianSourceManagementTest(unittest.TestCase):
                 self.provider.reset()
         self.assertTrue(self.mira.exists())
         self.assertFalse(self.main.exists())
-        self.assertTrue(self.main.with_name(self.main.name + ".mira-disabled").exists())
+        self.assertTrue(self._stash_for(self.main).exists())
 
 
 if __name__ == "__main__":
