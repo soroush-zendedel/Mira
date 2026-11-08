@@ -2,129 +2,93 @@
 
 **Universal Software Repository Mirror Manager**
 
-One CLI. Multiple ecosystems. Intelligent repository mirror management.
+One CLI. Multiple ecosystems. Intelligent mirror discovery, health checks, ranking, and configuration.
 
-Mira discovers, evaluates, selects, and configures software repository mirrors for:
+Mira helps you find fast, healthy package mirrors and either apply them permanently or use them for a single command — without fighting slow or blocked upstream registries.
 
-- **PyPI** (pip)
-- **npm** (npm CLI)
-- **Debian APT**
-- **Arch Linux pacman**
-- **Docker Engine** registry mirrors
+**Repository:** [github.com/soroush-zendedel/Mira](https://github.com/soroush-zendedel/Mira)
 
-Zero third-party Python **runtime** dependencies (stdlib only).
+---
 
-Repository: https://github.com/soroush-zendedel/Mira
+## Supported ecosystems
+
+| Provider | Permanent config | One-shot / ephemeral commands |
+|----------|------------------|-------------------------------|
+| **PyPI** (pip) | `mira pypi set` | `mira pip install …` |
+| **npm** | `mira npm set` | `mira npm install …` |
+| **Debian / Ubuntu APT** | `mira debian set` | `mira apt install …` |
+| **Arch Linux pacman** | `mira pacman set` | `mira pacman -S …` |
+| **Docker Engine** | `mira docker set` | `mira docker pull …` |
+
+---
+
+## Highlights
+
+- **Zero runtime dependencies** — pure Python 3.10+ stdlib (build tools like PyInstaller are CI-only).
+- **Curated mirror database** — country-tagged HTTPS mirrors, versioned and checksum-verified from GitHub.
+- **Concurrent health checks** — protocol-aware probes (not just HTTP 200), with local caching.
+- **Smart ranking** — scores availability, validity, latency, stability, and priority; strategies: `balanced`, `fastest`, `reliability`.
+- **Safe writes** — backups before changing system or user config; `--dry-run` previews without writing.
+- **Ephemeral mode** — run package-manager commands through the best mirror *without* permanent config changes; retries across mirrors until success or `Ctrl+C`.
+- **Self-update** — `mira update` refreshes the mirror DB; `mira upgrade` upgrades the app (source or binary installs).
+- **Privilege-aware** — system operations re-launch with `sudo` when needed; dry-runs never elevate.
+- **Cross-platform packaging** — Linux/Windows standalone binaries, `.deb`, Arch `.pkg.tar.zst`, and source installers.
 
 ---
 
 ## Install
 
-Pick one method. Standalone binaries, `.deb`, and Arch `.pkg.tar.zst` are produced automatically by GitHub Actions when a version tag is pushed.
+Release assets are built by GitHub Actions when a `v*` tag is pushed. Always verify with `SHA256SUMS` from the same release.
 
-### Windows — standalone EXE (recommended)
+### Windows (standalone EXE)
 
-1. Open [Releases](https://github.com/soroush-zendedel/Mira/releases/latest)
-2. Download **`mira-windows-x86_64.exe`**
-3. Rename to `mira.exe` and place it on your PATH  
-   (for example `%LOCALAPPDATA%\Programs\Mira\bin\`)
-
-Or from PowerShell (downloads the release binary):
+1. Download `mira-windows-x86_64.exe` from [Releases](https://github.com/soroush-zendedel/Mira/releases/latest)
+2. Rename to `mira.exe` and put it on your PATH
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\installers\install.ps1 -FromRelease
 ```
 
-### Linux — standalone binary
+### Linux (standalone binary)
 
 ```bash
 curl -fsSL -o /tmp/mira https://github.com/soroush-zendedel/Mira/releases/latest/download/mira-linux-x86_64
 chmod +x /tmp/mira
 sudo mv /tmp/mira /usr/local/bin/mira
-mira --version
-mira update
+mira --version && mira update
 ```
 
-`/usr/local/bin` is on PATH by default. No extra PATH setup needed.
-
-Or:
+### Debian / Ubuntu (`.deb`)
 
 ```bash
-bash installers/install.sh --from-release
-```
-
-### Debian / Ubuntu — `.deb` package
-
-Wildcards do **not** work inside the download URL. Resolve the latest asset name first:
-
-```bash
-# 1) Find the exact .deb name from the latest release
 DEB_URL=$(curl -fsSL https://api.github.com/repos/soroush-zendedel/Mira/releases/latest \
   | grep -oE 'https://[^"]+/mira_[0-9.]+_amd64\.deb' | head -n1)
-
-# 2) Download and install
 curl -fsSL -o /tmp/mira.deb "$DEB_URL"
 sudo dpkg -i /tmp/mira.deb
-mira --version
-mira update
+mira --version && mira update
 ```
 
-Or with a known version (example):
+Requires `python3 >= 3.10`.
+
+### Arch Linux (`.pkg.tar.zst`)
 
 ```bash
-curl -fsSL -o /tmp/mira.deb \
-  https://github.com/soroush-zendedel/Mira/releases/latest/download/mira_1.0.6_amd64.deb
-sudo dpkg -i /tmp/mira.deb
-```
-
-Requires `python3 >= 3.10`. The package installs to `/usr/bin/mira` (already on PATH).
-
-### Arch Linux — `.pkg.tar.zst` package
-
-The Release workflow builds the package on an Arch Linux environment and attaches it to the GitHub Release.
-
-```bash
-# 1) Resolve the latest package URL
 PKG_URL=$(curl -fsSL https://api.github.com/repos/soroush-zendedel/Mira/releases/latest \
   | grep -oE 'https://[^"]+/mira-[0-9.]+-[0-9]+-any\.pkg\.tar\.zst' | head -n1)
-
-# 2) Download and install
 curl -fsSL -o /tmp/mira.pkg.tar.zst "$PKG_URL"
 sudo pacman -U /tmp/mira.pkg.tar.zst
-mira --version
-mira update
+mira --version && mira update
 ```
 
-Requires `python >= 3.10`. The package is owned by **pacman**; upgrade it with `sudo pacman -Syu` (or `-U` a newer package file). Do **not** use `mira upgrade` for pacman-managed installs — that command is reserved for user/source installs so it never overwrites files managed by pacman.
+The package is owned by **pacman**. Upgrade it with `sudo pacman -Syu` (or `-U`); do **not** use `mira upgrade` for pacman-managed installs.
 
-### From source (no pip, works offline after clone)
-
-**Linux**
+### From source
 
 ```bash
 git clone https://github.com/soroush-zendedel/Mira.git
 cd Mira
-bash installers/install.sh
-```
-
-**Windows** (no `irm` required)
-
-```powershell
-git clone https://github.com/soroush-zendedel/Mira.git
-cd Mira
-powershell -ExecutionPolicy Bypass -File .\installers\install.ps1
-```
-
-Or download the ZIP from GitHub → extract → run the same installer script.
-
-Source (user) installs upgrade with `mira upgrade`, which fetches the new GitHub release **source** archive (not the platform binary) and replaces the package tree under the user install root.
-
-### Verify downloads
-
-Each Release includes **`SHA256SUMS`**. Example:
-
-```bash
-sha256sum -c SHA256SUMS
+bash installers/install.sh          # Linux
+# powershell -ExecutionPolicy Bypass -File .\installers\install.ps1   # Windows
 ```
 
 ---
@@ -132,272 +96,154 @@ sha256sum -c SHA256SUMS
 ## Quick start
 
 ```bash
-mira update          # refresh mirror database from GitHub
-mira status
-mira check           # all providers
-mira check pypi
+mira update                 # download / refresh mirror database
+mira status                  # paths, DB version, countries, providers
+mira check                   # health-check all providers
+mira check pypi --refresh    # force re-check one provider
+
 mira pypi list
-mira pypi set --dry-run
-mira pypi set        # apply best healthy mirror (user scope)
-mira npm list
-mira npm set --dry-run
-mira npm view express version  # retry mirrors until the command succeeds
-mira config set countries ir,de
+mira pypi set --dry-run      # preview best mirror
+mira pypi set                # apply best healthy mirror (user scope)
+
+mira npm set
+mira debian set              # may prompt for sudo
+mira pacman set
+mira docker set              # then restart Docker yourself if needed
 ```
-
-## npm commands and mirror selection
-
-Mira keeps npm's own commands available behind the `mira npm` prefix:
-
-- Mira management actions: `mira npm list`, `check`, `current`, `status`, `set`, and `reset`.
-- Other commands are passed to the installed npm CLI. For example,
-  `mira npm view express version` or `mira npm install lodash`.
-
-For registry-dependent npm commands, Mira checks the configured npm mirrors
-for the selected countries, ranks healthy ones using the configured strategy,
-and adds each URL as a command-line `--registry` option. If a command fails on
-every candidate, Mira waits three seconds, checks the mirrors again, and
-repeats until it succeeds. Press `Ctrl+C` to cancel. This applies to that
-invocation only; it does not edit `.npmrc`. An explicit `--registry` supplied
-by the user is preserved and bypasses Mira's retry loop. The native `npm`
-command must be installed separately. Run `mira update` before the first
-Mira-managed npm command so the mirror database is present.
-
-The same retry behavior applies to Mira-managed `pip` package retrieval,
-APT commands that need repository indexes (`update`, `install`, `upgrade`,
-`download`, `source`, and `build-dep`), and `docker pull`. A command that keeps
-failing will keep retrying, including when the cause is a missing package/image
-or an invalid argument; cancel it with `Ctrl+C` and correct the command. Local
-package-manager operations and Mira management commands are not wrapped in the
-retry loop.
-
-To change npm's persistent default, use Mira's provider action instead:
-
-```sh
-mira npm list
-mira npm check --refresh
-mira npm set --dry-run
-mira npm set --scope user       # writes the user .npmrc, after backup
-npm config get registry         # inspect npm's effective default
-mira npm reset --scope user
-```
-
-`--scope` supports `user` (default), `project` (the current directory's
-`.npmrc`), and `system`. Mira preserves authentication and per-scope registry
-entries. Persistent registry settings also affect publishing; target the
-intended writable registry explicitly when publishing. npm can also use a
-registry assigned to a package scope (such as `@company`); those entries are
-preserved and may take precedence for matching packages. Lockfiles can contain
-resolved tarball URLs from the registry used when they were created; inspect
-`resolved` fields if an install still contacts a different host.
-
-`mira reset --provider npm` resets npm's user and project settings;
-`mira reset --dry-run` previews a reset for all providers.
-
-### Manually test each configured npm registry
-
-The health checker requests the public `express` package metadata at
-`<registry>/express`, then confirms the response names `express` and contains
-versions. These `npm view` commands query that same package metadata endpoint.
-Each command bypasses automatic selection and tests only the specified URL:
-
-| Country | Registry | Manual test |
-|---|---|---|
-| Iran | Runflare | `npm view express version --registry="https://mirror-npm.runflare.com/"` |
-| Iran | Novin Cloud | `npm view express version --registry="https://mirror.novin.cloud/artifactory/api/npm/npm/"` |
-| Iran | Kargadan | `npm view express version --registry="https://mirror.kargadan.ir/nexus/repository/npm-group/"` |
-| Iran | npmjs public registry | `npm view express version --registry="https://registry.npmjs.org/"` |
-| US, Switzerland, Germany | npmjs public registry (global option) | `npm view express version --registry="https://registry.npmjs.org/"` |
-
-A successful command prints an Express version. To ask Mira to probe and
-display all configured mirrors for your country filter, run:
-
-```sh
-mira npm check --refresh
-```
-
-To let Mira select a healthy one and make the same query, run:
-
-```sh
-mira npm view express version
-```
-
-Mira's current registry list and detailed npm notes are in [docs/npm.md](docs/npm.md).
-
-### Docker / APT / pacman (need elevation)
-
-```bash
-mira docker set --dry-run
-sudo mira docker set
-sudo systemctl restart docker   # Mira does not restart Docker for you
-
-mira debian set --dry-run
-sudo mira debian set
-
-mira pacman set --dry-run
-sudo mira pacman set
-```
-
-See [docs/privileges.md](docs/privileges.md).
-
-### Everyday provider workflow
-
-The same management actions are available for `pypi`, `npm`, `debian`,
-`docker`, and `pacman`:
-
-```sh
-mira <provider> list
-mira <provider> check --refresh
-mira <provider> current
-mira <provider> set --dry-run
-mira <provider> set
-mira <provider> reset
-```
-
-`set --dry-run` previews the chosen mirror and configuration change. A normal
-`set` backs up the destination configuration and verifies the selected mirror
-after applying it. `check` only checks health; it does not change package
-manager settings. The checker caches results for a while; use `--refresh` to
-force a new check.
-
-For APT, `mira debian set` takes exclusive control of active source inputs:
-`/etc/apt/sources.list` and active `.list` and `.sources` files in
-`/etc/apt/sources.list.d/` are backed up and moved to
-`/var/lib/mira/apt-disabled/` before Mira writes its own Deb822 source file.
-Keeping disabled files outside `sources.list.d` avoids apt notices about
-invalid filename extensions. This temporarily disables third-party
-repositories as well as distribution repositories. `mira debian reset`
-restores the original paths and content; it stops safely if a path has since
-been recreated. Mira does not edit or delete keyring files. Its source uses
-the installed Debian or Ubuntu archive keyring through `Signed-By`, and `set`
-refuses to proceed if that keyring is missing. Review
-`mira debian set --dry-run` before applying the change.
-
-Mira uses all countries by default. Narrow the candidate list with
-`mira config set countries ir` or a comma-separated list such as
-`mira config set countries ir,de`; use `*` to return to all countries. Mirror
-ranking can be tuned with `mira config set strategy balanced` (or `fastest` or
-`reliability`). Run `mira config show` to inspect these settings and
-`mira status` to see the database version and configured country filter.
-
-APT and Docker write system-level configuration and usually require elevation
-for `set`. Mira backs up files before writing and does not restart Docker
-automatically; see [docs/privileges.md](docs/privileges.md).
-
-For Arch Linux, `mira pacman set` prepends a Mira-managed HTTPS server block to
-`/etc/pacman.d/mirrorlist`, backs up an existing file, and leaves the remaining
-mirrorlist intact as fallbacks. `mira pacman reset` removes only that block.
-Both operations normally require `sudo`. Health checks use Arch's `lastsync`
-timestamp and reject mirrors more than seven days out of date. Mira never
-changes pacman's `SigLevel` or disables package signature verification. The
-Arch mirror database includes official global GeoIP endpoints, which remain
-available under any Mira country filter; it also includes regional mirrors for
-the United States, Switzerland, and Germany.
-
-Pacman sync operations can use ranked mirrors for one invocation:
-`mira pacman -Syu` or `mira pacman -S package`. Mira clones
-`/etc/pacman.conf` to a temporary directory and redirects its active
-`pacman.d/mirrorlist` include; repository definitions and signature checks
-remain in effect, and persistent configuration is not changed. Local queries
-such as `mira pacman -Q` run directly.
 
 ---
 
-## How releases are built
+## Command reference
 
-On every version tag (`v1.2.3`), GitHub Actions (`.github/workflows/release.yml`) builds:
+### Global
 
-| Asset | Platform |
-|-------|----------|
-| `mira-linux-x86_64` | Linux standalone (PyInstaller) |
-| `mira-windows-x86_64.exe` | Windows standalone (PyInstaller) |
-| `mira_<ver>_amd64.deb` | Debian package |
-| `mira-<ver>-source.zip` | Source archive |
-| `SHA256SUMS` | Checksums |
+| Command | Purpose |
+|---------|---------|
+| `mira status` | Installation paths, DB version, config summary |
+| `mira update [--force]` | Refresh local mirror database from GitHub (single archive download) |
+| `mira upgrade` | Upgrade Mira itself (binary or source install; refuses pacman-owned installs) |
+| `mira check [provider] [--refresh]` | Concurrent mirror health checks |
+| `mira config show \| get \| set` | View or change config (`countries`, `strategy`, timeouts, …) |
+| `mira reset [provider] [--dry-run]` | Restore provider(s) to default upstream |
+| `mira uninstall [--keep-data]` | Remove Mira from the user account |
 
-**Publish a release (maintainers):**
+### Per provider (`pypi` · `npm` · `debian` · `docker` · `pacman`)
+
+| Action | Purpose |
+|--------|---------|
+| `list` | List known mirrors (respects country filter) |
+| `check [--refresh]` | Health-check this provider’s mirrors |
+| `current` / `status` | Show active Mira-managed configuration |
+| `set [--dry-run]` | Rank healthy mirrors and apply the best |
+| `reset [--dry-run]` | Remove Mira’s config / restore previous sources |
+
+**PyPI / npm scopes:** `--scope user` (default), `project`, or `system`.
+
+### Ephemeral package-manager passthrough
+
+These use ranked mirrors for **this invocation only** (no permanent config). Failed mirrors are retried in cycles until success or `Ctrl+C` (exit `130`).
 
 ```bash
-bash scripts/make_release_tag.sh 1.0.0
-# review version bump, then:
-git commit -m "Release v1.0.0"
-git tag -a v1.0.0 -m "Mira v1.0.0"
-git push origin main
-git push origin v1.0.0
+mira pip install requests
+mira npm install lodash
+mira apt install curl
+mira pacman -S cowsay          # auto-adds -y to refresh DBs when needed
+mira docker pull nginx
 ```
 
-CI builds the assets and attaches them to the GitHub Release. No manual upload required.
+- Explicit user flags (e.g. npm `--registry`, pip `--index-url`) are preserved and skip Mira’s selection.
+- Reserved management verbs (`list`, `check`, `set`, …) stay with Mira and are not forwarded.
 
-Local optional builds:
+---
 
-```bash
-bash scripts/build_standalone.sh              # Linux binary (pyinstaller)
-powershell -File .\scripts\build_standalone.ps1   # Windows mira.exe
-bash scripts/build_deb.sh 1.0.0                 # .deb (Linux/WSL only)
-```
+## How ranking works
+
+1. Load mirrors from the local database (optional country filter).
+2. Run concurrent, **read-only**, provider-specific health probes.
+3. Score each result: availability, validity, latency, stability, priority.
+4. Select by strategy: `balanced` (default), `fastest`, or `reliability`.
+5. On `set`, verify the chosen mirror with a real package-manager operation when applicable; try the next candidate if verification fails.
+
+Health results are cached (default TTL 15 minutes). Use `--refresh` to force a new probe.
 
 ---
 
 ## Configuration
 
-- Linux: `~/.config/mira/config.json` — data under `~/.local/share/mira/`
-- Windows: `%APPDATA%\Mira\` — data under `%LOCALAPPDATA%\Mira\`
+```bash
+mira config show
+mira config set countries ir,de,us     # or * for all
+mira config set strategy fastest
+mira config set timeout 5
+```
+
+| Key | Meaning |
+|-----|---------|
+| `countries` | ISO country codes or `*` |
+| `strategy` | `balanced` · `fastest` · `reliability` |
+| `timeout` / `read_timeout` | Network timeouts (seconds) |
+| `max_workers` | Concurrent health-check workers |
+| `health_cache_ttl` | Cache lifetime (seconds) |
+| `prefer_countries` | Soft preference in ranking |
+
+Config lives under the user config dir (`~/.config/mira` on Linux; `%APPDATA%\Mira` on Windows). Database, cache, and backups live under the user data dir.
 
 ---
 
+## Provider notes
 
+### PyPI
+Writes `index-url` / `extra-index-url` for the chosen scope. Prefer `user` or `project` over `system`.
 
-## Versioning
+### npm
+Permanent `set` updates `.npmrc`. Ephemeral `mira npm …` passes `--registry` and does not edit `.npmrc`.
 
-Mira uses [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
+### Debian / Ubuntu APT
+`set` takes exclusive control of active APT sources: backs up and moves `/etc/apt/sources.list` and active `.list` / `.sources` files to `/var/lib/mira/apt-disabled/` (outside `sources.list.d`, so apt does not warn about unknown extensions), then writes Deb822 `mira.sources` with an explicit `Signed-By` keyring. `reset` restores previous sources. Keyrings are never weakened or removed.
 
-| File | Role |
-|------|------|
-| `VERSION` | Single source of truth |
-| `src/mira/__init__.py` → `__version__` | Runtime (`mira --version`) |
-| `pyproject.toml` | Packaging metadata |
-| Git tag `vX.Y.Z` | Triggers GitHub Actions release build |
+### Arch pacman
+`set` prepends a Mira-managed HTTPS server block in the mirrorlist. Ephemeral `mira pacman -S …` uses a temporary config + mirrorlist and refreshes package DBs (`-y`) when the user did not already request it.
 
-Bump and publish:
+### Docker
+Updates registry mirrors in `daemon.json` (Linux). Restart Docker yourself after `set`. Ephemeral `pull`/`run` can rewrite image references through the selected registry mirror host.
 
-**Linux / macOS**
+---
 
-```bash
-bash scripts/make_release_tag.sh 1.0.1
-git add -A && git commit -m "Release v1.0.1"
-git tag -a v1.0.1 -m "Mira v1.0.1"
-git push origin main && git push origin v1.0.1
-```
+## Privileges
 
-**Windows (PowerShell)**
+| Operation | Elevation |
+|-----------|-----------|
+| `list` / `check` / `status` / `update` / dry-runs | None |
+| `pypi`/`npm` set (`user` / `project`) | None |
+| `debian` / `docker` / `pacman` set & reset | Root (auto `sudo` on Linux) |
+| `pypi set --scope system` | Root when required |
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\make_release_tag.ps1 1.0.1
-git add -A
-git commit -m "Release v1.0.1"
-git tag -a v1.0.1 -m "Mira v1.0.1"
-git push origin main
-git push origin v1.0.1
-```
+On Linux, Mira re-runs itself via `sudo env MIRA_ELEVATED=1 …` when a system write is required (avoids `sudo -E` policy warnings). On Windows, use an elevated shell for system-level changes.
 
-## PATH during install
+---
 
-Installers ask interactively whether to add the launcher directory to your PATH:
+## Upgrading Mira
 
-- Linux: appends to `~/.bashrc` / `~/.zshrc` / fish config (only if you answer yes)
-- Windows: updates the **user** PATH environment variable (only if you answer yes)
+| Install type | Command |
+|--------------|---------|
+| User / source | `mira upgrade` (fetches release **source** archive) |
+| Standalone binary | `mira upgrade` (replaces the binary) |
+| Arch package | `sudo pacman -Syu` or `pacman -U` a newer `.pkg.tar.zst` |
+| Debian `.deb` | Install a newer `.deb` with `dpkg` / `apt` |
 
-Non-interactive / CI:
+`mira upgrade` refuses to overwrite pacman-managed files.
 
-```bash
-bash installers/install.sh --yes
-# or
-MIRA_INSTALL_NONINTERACTIVE=1 bash installers/install.sh
-```
+---
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\installers\install.ps1 -Yes
-```
+## Design principles
+
+- HTTPS-only mirror URLs in the database.
+- Health checks never mutate system configuration.
+- Atomic mirror-database install with SHA-256 integrity from the manifest.
+- Robust TLS on frozen binaries: system CA bundles are loaded explicitly (fixes common PyInstaller `CERTIFICATE_VERIFY_FAILED` cases).
+- No telemetry; no third-party runtime network stacks.
+
+---
 
 ## Development
 
@@ -407,6 +253,10 @@ python -m mira --version
 python -m unittest discover -s tests -v
 ```
 
+See `AGENTS.md` for contributor conventions, provider checklist, and release process. Pushing a `v*` tag runs `.github/workflows/release.yml` (Linux/Windows binaries, `.deb`, Arch package, source zip, `SHA256SUMS`).
+
+---
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
