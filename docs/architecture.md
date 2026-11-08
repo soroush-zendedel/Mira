@@ -8,7 +8,7 @@
 4. **Updater** – downloads and validates database from GitHub.
 5. **Checker** – concurrent provider-specific health checks + cache.
 6. **Scoring / Selector** – ranks healthy mirrors.
-7. **Providers** – PyPI, Debian, Docker (apply/reset/list/check).
+7. **Providers** – PyPI, npm, Debian, Docker (apply/reset/list/check).
 8. **Services** – backup, configuration helpers.
 9. **Utils** – network, terminal, filesystem, platform, validation.
 

@@ -28,6 +28,12 @@ class TestRegistry(unittest.TestCase):
             self.assertEqual(m["provider"], "pypi")
             self.assertTrue(m["url"].startswith("https://"))
 
+    def test_list_npm_by_country(self):
+        mirrors = self.reg.list_mirrors(provider="npm", countries=["ir"])
+        self.assertGreaterEqual(len(mirrors), 1)
+        self.assertTrue(any(m["id"] == "runflare-npm" for m in mirrors))
+        self.assertTrue(all(m["provider"] == "npm" and m["country"] == "ir" for m in mirrors))
+
     def test_country_filter(self):
         mirrors = self.reg.list_mirrors(provider="pypi", countries=["ir"])
         for m in mirrors:

@@ -20,6 +20,7 @@ from mira.exceptions import MiraError, NoHealthyMirrorError
 from mira.providers.debian import DebianProvider
 from mira.providers.docker import DockerProvider
 from mira.providers.pypi import PyPIProvider
+from mira.providers.npm import NpmProvider
 from mira.services.backup import BackupService
 from mira.utils.terminal import Terminal
 from mira.utils.path_setup import maybe_offer_path_setup
@@ -52,12 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_apt.add_argument("apt_args", nargs=argparse.REMAINDER, help="Arguments passed to apt-get")
     p_reset = sub.add_parser(
         "reset",
-        help="Restore all providers (pypi/debian/docker) to default upstream configuration",
+        help="Restore all providers (pypi/npm/debian/docker) to default upstream configuration",
     )
     p_reset.add_argument("--dry-run", action="store_true", help="Show what would be changed")
     p_reset.add_argument(
         "--provider",
-        choices=["pypi", "debian", "docker", "all"],
+        choices=["pypi", "npm", "debian", "docker", "all"],
         default="all",
         help="Limit reset to one provider (default: all)",
     )
@@ -66,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # check
     p_check = sub.add_parser("check", help="Check mirror health")
-    p_check.add_argument("provider", nargs="?", choices=["pypi", "debian", "docker"], help="Limit to one provider")
+    p_check.add_argument("provider", nargs="?", choices=["pypi", "npm", "debian", "docker"], help="Limit to one provider")
     p_check.add_argument("--refresh", action="store_true", help="Ignore cache and re-check")
 
     # config
@@ -80,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_set.add_argument("value")
 
     # provider commands factory
-    for prov in ("pypi", "debian", "docker"):
+    for prov in ("pypi", "npm", "debian", "docker"):
         p = sub.add_parser(prov, help=f"{prov} provider commands")
         ps = p.add_subparsers(dest="prov_cmd")
         ps.add_parser("list", help="List known mirrors")
@@ -90,8 +91,10 @@ def build_parser() -> argparse.ArgumentParser:
         ps.add_parser("status", help="Alias for current")
         pset = ps.add_parser("set", help="Select and apply best mirror")
         pset.add_argument("--dry-run", action="store_true")
-        pset.add_argument("--scope", choices=["user", "project", "system"], default="user", help="PyPI scope")
-        ps.add_parser("reset", help="Reset configuration").add_argument("--dry-run", action="store_true")
+        pset.add_argument("--scope", choices=["user", "project", "system"], default="user", help="Configuration scope")
+        preset = ps.add_parser("reset", help="Reset configuration")
+        preset.add_argument("--dry-run", action="store_true")
+        preset.add_argument("--scope", choices=["user", "project", "system"], default="user", help="Configuration scope")
 
     return parser
 
@@ -99,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _make_providers(cfg: Config, registry: MirrorRegistry, backup: BackupService):
     return {
         "pypi": PyPIProvider(registry, backup),
+        "npm": NpmProvider(registry, backup),
         "debian": DebianProvider(registry, backup),
         "docker": DockerProvider(registry, backup),
     }
@@ -243,7 +247,7 @@ def cmd_provider(
 
         dry = getattr(args, "dry_run", False)
         opts: dict[str, Any] = {"dry_run": dry}
-        if provider_name == "pypi":
+        if provider_name in ("pypi", "npm"):
             opts["scope"] = getattr(args, "scope", "user")
 
         if dry:
@@ -299,7 +303,8 @@ def cmd_provider(
     if action == "reset":
         dry = getattr(args, "dry_run", False)
         try:
-            summary = prov.reset(dry_run=dry)
+            opts = {"scope": getattr(args, "scope", "user")} if provider_name in ("pypi", "npm") else {}
+            summary = prov.reset(dry_run=dry, **opts)
             term.info(str(summary))
             return 0
         except MiraError as e:
@@ -357,7 +362,7 @@ def cmd_reset(term: Terminal, cfg: Config, registry: MirrorRegistry, args: argpa
     """Reset one or all providers back to default upstream configuration."""
     dry = getattr(args, "dry_run", False)
     which = getattr(args, "provider", "all") or "all"
-    targets = ["pypi", "debian", "docker"] if which == "all" else [which]
+    targets = ["pypi", "npm", "debian", "docker"] if which == "all" else [which]
 
     backup = BackupService(cfg.backups_dir)
     providers = _make_providers(cfg, registry, backup)
@@ -370,14 +375,14 @@ def cmd_reset(term: Terminal, cfg: Config, registry: MirrorRegistry, args: argpa
         prov = providers[name]
         term.info(f"Resetting {name}...")
         try:
-            # PyPI: reset user scope (primary); also try project if present
-            if name == "pypi":
+            # User scope is primary; also try project scope where applicable.
+            if name in ("pypi", "npm"):
                 summary = prov.reset(dry_run=dry, scope="user")
-                term.info(f"  pypi/user: {summary}")
+                term.info(f"  {name}/user: {summary}")
                 try:
                     summary_p = prov.reset(dry_run=dry, scope="project")
-                    if summary_p.get("status") not in (None, "nothing to reset", "no index-url found"):
-                        term.info(f"  pypi/project: {summary_p}")
+                    if summary_p.get("status") not in (None, "nothing to reset", "no index-url found", "no registry found"):
+                        term.info(f"  {name}/project: {summary_p}")
                 except Exception:
                     pass
             else:
@@ -546,7 +551,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(term, cfg, registry, getattr(args, "provider", None), getattr(args, "refresh", False))
     if cmd == "config":
         return cmd_config(term, cfg, args)
-    if cmd in ("pypi", "debian", "docker"):
+    if cmd in ("pypi", "npm", "debian", "docker"):
         action = getattr(args, "prov_cmd", None)
         if not action:
             parser.parse_args([cmd, "--help"])

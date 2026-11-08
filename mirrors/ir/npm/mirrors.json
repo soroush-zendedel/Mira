@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "country": "ir",
+  "provider": "npm",
+  "mirrors": [
+    {
+      "id": "runflare-npm",
+      "name": "Runflare npm Mirror",
+      "url": "https://mirror-npm.runflare.com/",
+      "enabled": true,
+      "priority": 92,
+      "source": "https://runflare.com/mirrors/npm-mirror/"
+    },
+    {
+      "id": "novincloud-npm",
+      "name": "Novin Cloud npm Mirror",
+      "url": "https://mirror.novin.cloud/artifactory/api/npm/npm/",
+      "enabled": true,
+      "priority": 90,
+      "source": "https://novin.cloud/en/blog/npm-mirror-iran"
+    },
+    {
+      "id": "kargadan-npm",
+      "name": "Kargadan npm Group",
+      "url": "https://mirror.kargadan.ir/nexus/repository/npm-group/",
+      "enabled": true,
+      "priority": 88,
+      "source": "https://www.t.me/s/kargadan_ir"
+    },
+    {
+      "id": "npmjs-public",
+      "name": "npmjs Public Registry (global)",
+      "url": "https://registry.npmjs.org/",
+      "enabled": true,
+      "priority": 80,
+      "source": "https://docs.npmjs.com/misc/registry/"
+    }
+  ]
+}

@@ -198,6 +198,27 @@ def verify_docker(mirror: dict[str, Any], *, timeout: float = 25.0) -> dict[str,
     return {"ok": False, "method": "docker registry probe", "detail": last_err, "error": last_err}
 
 
+def verify_npm(mirror: dict[str, Any], *, timeout: float = 20.0) -> dict[str, Any]:
+    """Fetch public package metadata from the selected npm registry."""
+    probe = mirror.get("url", "").rstrip("/") + "/express"
+    try:
+        status, _, body, latency = fetch_url(probe, timeout=timeout, max_size=1024 * 1024)
+        import json
+
+        data = json.loads(body.decode("utf-8"))
+        ok = (
+            200 <= status < 300
+            and isinstance(data, dict)
+            and data.get("name") == "express"
+            and isinstance(data.get("versions"), dict)
+            and bool(data["versions"])
+        )
+        detail = f"HTTP {status} in {latency}ms" if ok else f"Unexpected npm metadata (HTTP {status})"
+        return {"ok": ok, "method": f"GET {probe}", "detail": detail, **({} if ok else {"error": detail})}
+    except (NetworkError, ValueError, UnicodeDecodeError) as e:
+        return {"ok": False, "method": f"GET {probe}", "detail": str(e), "error": str(e)}
+
+
 def verify_provider(provider_name: str, mirror: dict[str, Any]) -> dict[str, Any]:
     if provider_name == "pypi":
         return verify_pypi(mirror)
@@ -205,4 +226,6 @@ def verify_provider(provider_name: str, mirror: dict[str, Any]) -> dict[str, Any
         return verify_debian(mirror)
     if provider_name == "docker":
         return verify_docker(mirror)
+    if provider_name == "npm":
+        return verify_npm(mirror)
     return {"ok": False, "error": f"no verifier for {provider_name}"}

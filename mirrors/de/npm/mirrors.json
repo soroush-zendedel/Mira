@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "country": "de",
+  "provider": "npm",
+  "mirrors": [
+    {
+      "id": "npmjs-public",
+      "name": "npmjs Public Registry (global)",
+      "url": "https://registry.npmjs.org/",
+      "enabled": true,
+      "priority": 90,
+      "source": "https://docs.npmjs.com/misc/registry/"
+    }
+  ]
+}

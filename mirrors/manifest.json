@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "database_version": "1.1.0",
-  "updated_at": "2026-11-07T00:00:00Z",
+  "database_version": "1.2.0",
+  "updated_at": "2026-11-08T00:00:00Z",
   "countries": [
     "ir",
     "us",
@@ -10,6 +10,7 @@
   ],
   "providers": [
     "pypi",
+    "npm",
     "debian",
     "docker"
   ],
@@ -27,7 +28,11 @@
       "de/pypi/mirrors.json": "dc593b5ba3c3bfb7b5a6f73c59370835cf37ab4aa220c275cca1cd7fd12072ed",
       "us/debian/mirrors.json": "bfa0fd56f9bde088ce2b2b997af1d7900c81138582e48cb0c6e62eec99b76cf6",
       "us/docker/mirrors.json": "d2645d4aadea3e9ec2bc51f17642567d9a5202adb311822559796cc7dacec3d1",
-      "us/pypi/mirrors.json": "02be2e3776cfaa191ab27cd45c4fcb3e211eee6abfdcd6471274fe67ab10adf1"
+      "us/pypi/mirrors.json": "02be2e3776cfaa191ab27cd45c4fcb3e211eee6abfdcd6471274fe67ab10adf1",
+      "ir/npm/mirrors.json": "dab8349ce891ac42db2772a1a14850a99101f6b8f74620c3aedacc9f1d1d21a9",
+      "us/npm/mirrors.json": "1cf313e1e6a8c1a41f389d44b592fab24a26aa8852e9c96ab700fa1bec063a3d",
+      "ch/npm/mirrors.json": "e0cd633d6a80a1c7ee38c018d4972b9a2369b88dc50a47a18cbd11f7da6c5612",
+      "de/npm/mirrors.json": "1c7987044dbce006250432dcec348b5287b0b906e65722878416d2aaefbc4954"
     }
   },
   "trust": {

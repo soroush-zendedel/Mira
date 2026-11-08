@@ -7,6 +7,7 @@ One CLI. Multiple ecosystems. Intelligent repository mirror management.
 Mira discovers, evaluates, selects, and configures software repository mirrors for:
 
 - **PyPI** (pip)
+- **npm** (npm CLI)
 - **Debian APT**
 - **Docker Engine** registry mirrors
 
@@ -117,6 +118,8 @@ mira check pypi
 mira pypi list
 mira pypi set --dry-run
 mira pypi set        # apply best healthy mirror (user scope)
+mira npm list
+mira npm set --dry-run
 mira config set countries ir,de
 ```
 
@@ -132,6 +135,11 @@ sudo mira debian set
 ```
 
 See [docs/privileges.md](docs/privileges.md).
+
+For npm, `mira npm set` updates the selected `.npmrc` registry while preserving
+authentication and scoped registry entries. Use `--scope user|project|system`
+to choose the configuration file; `mira npm reset` removes only the default
+`registry` entry. See [docs/npm.md](docs/npm.md) for registry sources and usage.
 
 ---
 

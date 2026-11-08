@@ -36,6 +36,13 @@ class VerifyHelpersTest(unittest.TestCase):
             r = v.verify_docker({"url": "https://registry.example"})
         self.assertTrue(r["ok"])
 
+    def test_verify_npm_metadata_ok(self):
+        body = b'{"name":"express","versions":{"1.0.0":{}}}'
+        with mock.patch.object(v, "fetch_url", return_value=(200, {}, body, 10)):
+            r = v.verify_provider("npm", {"url": "https://npm.example/"})
+        self.assertTrue(r["ok"])
+        self.assertIn("express", r["method"])
+
     def test_verify_pypi_index_ok(self):
         with mock.patch.object(v, "_run", return_value=(0, "pip (26.0)\nAvailable versions: 26.0, 25.0")):
             r = v.verify_pypi({"url": "https://pypi.example/simple"})
