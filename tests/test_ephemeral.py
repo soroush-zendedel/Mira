@@ -158,6 +158,8 @@ class PackageCommandFailoverTest(unittest.TestCase):
              mock.patch("mira.services.ephemeral.DebianProvider._detect_codename", return_value="resolute"), \
              mock.patch("mira.services.ephemeral.DebianProvider._components", return_value=["main", "universe"]), \
              mock.patch("mira.services.ephemeral.DebianProvider._detect_arch", return_value="amd64"), \
+             mock.patch("mira.services.ephemeral.DebianProvider._archive_keyring", return_value="/keys/archive.gpg"), \
+             mock.patch("mira.services.ephemeral.DebianProvider._archive_keyring_available", return_value=True), \
              mock.patch("mira.services.ephemeral.shutil.which", return_value="apt-get"), \
              mock.patch("mira.services.ephemeral._run", side_effect=fake_apt_run) as run:
             code = run_apt(object(), object(), ["update"], None)
@@ -165,6 +167,7 @@ class PackageCommandFailoverTest(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertIn("https://bad.example/ubuntu", seen_sources[0])
         self.assertIn("https://good.example/ubuntu", seen_sources[1])
+        self.assertIn("signed-by=/keys/archive.gpg", seen_sources[0])
 
     def test_docker_pull_retries_next_registry(self):
         candidates = [

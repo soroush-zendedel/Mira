@@ -47,6 +47,11 @@ user-facing behavior.
   system configuration.
 - Provider `apply` methods must honor `dry_run`, preserve unrelated settings,
   and create a backup before writing an existing configuration file.
+- Debian APT `set` intentionally takes exclusive control of active source
+  inputs: back up and disable `/etc/apt/sources.list` and active `.list` and
+  `.sources` files, then write the Mira Deb822 source. Keep disabled copies
+  recoverable for `reset`, refuse restore-path conflicts, and use an explicit
+  installed archive keyring with `Signed-By`; never modify or weaken APT trust.
 - Provider `reset` methods should remove only Mira's relevant setting and
   preserve other configuration where possible.
 - Do not silently disable TLS or signature verification to make a mirror work.

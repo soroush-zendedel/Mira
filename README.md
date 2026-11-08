@@ -236,6 +236,17 @@ after applying it. `check` only checks health; it does not change package
 manager settings. The checker caches results for a while; use `--refresh` to
 force a new check.
 
+For APT, `mira debian set` takes exclusive control of active source inputs:
+`/etc/apt/sources.list` and active `.list` and `.sources` files in
+`/etc/apt/sources.list.d/` are backed up and renamed with a
+`.mira-disabled` suffix before Mira writes its own Deb822 source file. This
+temporarily disables third-party repositories as well as distribution
+repositories. `mira debian reset` restores the original filenames and content;
+it stops safely if a path has since been recreated. Mira does not edit or
+delete keyring files. Its source uses the installed Debian or Ubuntu archive
+keyring through `Signed-By`, and `set` refuses to proceed if that keyring is
+missing. Review `mira debian set --dry-run` before applying the change.
+
 Mira uses all countries by default. Narrow the candidate list with
 `mira config set countries ir` or a comma-separated list such as
 `mira config set countries ir,de`; use `*` to return to all countries. Mirror

@@ -42,6 +42,15 @@ sudo mira debian set
 sudo apt-get update
 ```
 
+`set` backs up and disables the active `/etc/apt/sources.list` plus `.list` and
+`.sources` files under `/etc/apt/sources.list.d/`, including third-party
+sources, then writes Mira's Deb822 source with an explicit distro archive
+`Signed-By` keyring. The disabled files remain beside the originals with a
+`.mira-disabled` suffix. `mira debian reset` restores them; it refuses to
+overwrite any original path that has been recreated. Keyring files are not
+changed. Review the `set --dry-run` output before applying this system-wide
+source switch.
+
 ## PyPI
 
 | Scope | Elevation |

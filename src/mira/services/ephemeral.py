@@ -295,6 +295,9 @@ def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
     codename = prov._detect_codename()
     components = " ".join(prov._components())
     architecture = prov._detect_arch()
+    keyring = prov._archive_keyring()
+    if not prov._archive_keyring_available():
+        raise MiraError(f"Required APT archive keyring is missing: {keyring}", code=1)
     apt_get = shutil.which("apt-get") or "apt-get"
     # Prefer running apt-get; prepend sudo when not root.
     prefix: list[str] = []
@@ -317,7 +320,7 @@ def run_apt(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
     def attempt(candidate: dict[str, Any], idx: int, total: int) -> int:
         mirror = candidate["mirror"]
         url = mirror["url"].rstrip("/")
-        line = f"deb [arch={architecture}] {url} {codename} {components}\n"
+        line = f"deb [arch={architecture} signed-by={keyring}] {url} {codename} {components}\n"
         with tempfile.TemporaryDirectory(prefix="mira-apt-") as td:
             src = Path(td) / "sources.list"
             src.write_text(line, encoding="utf-8")

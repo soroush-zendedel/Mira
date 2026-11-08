@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import re
+import stat
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,7 @@ from mira.core.registry import MirrorRegistry
 from mira.exceptions import NetworkError, ProviderError
 from mira.providers.base import RepositoryProvider
 from mira.services.backup import BackupService
+from mira.utils.filesystem import atomic_write
 from mira.utils.network import fetch_url
 from mira.utils.platform import is_linux
 
@@ -19,7 +22,10 @@ from mira.utils.platform import is_linux
 class DebianProvider(RepositoryProvider):
     name = "debian"
 
+    APT_MAIN_SOURCES = Path("/etc/apt/sources.list")
+    APT_SOURCE_PARTS = Path("/etc/apt/sources.list.d")
     MIRA_SOURCES = Path("/etc/apt/sources.list.d/mira.sources")
+    DISABLED_SUFFIX = ".mira-disabled"
 
     def __init__(self, registry: MirrorRegistry, backup: BackupService | None = None):
         self.registry = registry
@@ -96,6 +102,43 @@ class DebianProvider(RepositoryProvider):
             "enabled": True,
             "priority": 10,
         }
+
+    def _archive_keyring(self) -> Path:
+        family = self._distribution_family()
+        name = "ubuntu-archive-keyring.gpg" if family == "ubuntu" else "debian-archive-keyring.gpg"
+        return Path("/usr/share/keyrings") / name
+
+    def _archive_keyring_available(self) -> bool:
+        return self._archive_keyring().is_file()
+
+    def _active_source_files(self) -> list[Path]:
+        """Return active APT source files Mira will temporarily take ownership of."""
+        files: set[Path] = set()
+        if self.APT_MAIN_SOURCES.is_file():
+            files.add(self.APT_MAIN_SOURCES)
+        if self.APT_SOURCE_PARTS.is_dir():
+            for pattern in ("*.list", "*.sources"):
+                files.update(
+                    path
+                    for path in self.APT_SOURCE_PARTS.glob(pattern)
+                    if path.is_file() and re.fullmatch(r"[A-Za-z0-9_.-]+", path.name)
+                )
+        files.discard(self.MIRA_SOURCES)
+        return sorted(files, key=lambda path: str(path))
+
+    def _disabled_source_pairs(self) -> list[tuple[Path, Path]]:
+        """Find source files disabled by Mira and their original paths."""
+        pairs: list[tuple[Path, Path]] = []
+        if self.APT_MAIN_SOURCES.parent.is_dir():
+            paths = self.APT_MAIN_SOURCES.parent.glob(f"sources.list{self.DISABLED_SUFFIX}")
+            pairs.extend((self.APT_MAIN_SOURCES, path) for path in paths if path.is_file())
+        if self.APT_SOURCE_PARTS.is_dir():
+            paths = self.APT_SOURCE_PARTS.glob(f"*{self.DISABLED_SUFFIX}")
+            for path in paths:
+                original = path.with_name(path.name[:-len(self.DISABLED_SUFFIX)])
+                if original.suffix in {".list", ".sources"} and path.is_file():
+                    pairs.append((original, path))
+        return sorted(pairs, key=lambda pair: str(pair[0]))
 
     def _detect_arch(self) -> str:
         machine = platform.machine().lower()
@@ -193,13 +236,10 @@ class DebianProvider(RepositoryProvider):
         url = mirror["url"].rstrip("/")
         codename = self._detect_codename()
         arch = self._detect_arch()
-        family = self._distribution_family()
         components = " ".join(self._components())
-        keyring = (
-            "/usr/share/keyrings/ubuntu-archive-keyring.gpg"
-            if family == "ubuntu"
-            else "/usr/share/keyrings/debian-archive-keyring.gpg"
-        )
+        keyring = self._archive_keyring()
+        if not self._archive_keyring_available():
+            raise ProviderError(f"Required APT archive keyring is missing: {keyring}")
         content = f"""# Written by Mira - do not edit manually unless you know what you are doing
 Types: deb
 URIs: {url}
@@ -208,6 +248,18 @@ Components: {components}
 Architectures: {arch}
 Signed-By: {keyring}
 """
+        active_sources = self._active_source_files()
+        disabled_sources = [
+            (source, source.with_name(source.name + self.DISABLED_SUFFIX))
+            for source in active_sources
+        ]
+        conflicts = [str(disabled) for _, disabled in disabled_sources if disabled.exists()]
+        if conflicts:
+            raise ProviderError(
+                "Cannot safely disable APT sources because Mira's saved source file already exists: "
+                + ", ".join(conflicts)
+                + ". Run 'mira debian reset' or inspect those files first."
+            )
         summary = {
             "provider": "debian",
             "mirror_id": mirror.get("id"),
@@ -215,23 +267,51 @@ Signed-By: {keyring}
             "path": str(self.MIRA_SOURCES),
             "codename": codename,
             "dry_run": dry_run,
-            "action": "write mira.sources",
+            "action": "disable existing APT sources and write mira.sources",
+            "disabled_sources": [str(source) for source, _ in disabled_sources],
         }
         if dry_run:
-            summary["content_preview"] = content[:200]
+            summary["content_preview"] = content
             return summary
 
+        try:
+            for source, _ in disabled_sources:
+                self.backup.create_backup(source, provider="debian", operation="set-source")
+        except OSError as e:
+            raise ProviderError(f"Could not back up active APT source files; nothing was changed: {e}") from e
+        previous_mira: bytes | None = None
+        previous_mode: int | None = None
         if self.MIRA_SOURCES.exists():
             self.backup.create_backup(self.MIRA_SOURCES, provider="debian", operation="set")
+            previous_mira = self.MIRA_SOURCES.read_bytes()
+            previous_mode = stat.S_IMODE(self.MIRA_SOURCES.stat().st_mode)
+        moved: list[tuple[Path, Path]] = []
         try:
             self.MIRA_SOURCES.parent.mkdir(parents=True, exist_ok=True)
-            self.MIRA_SOURCES.write_text(content, encoding="utf-8")
+            for source, disabled in disabled_sources:
+                os.replace(source, disabled)
+                moved.append((source, disabled))
+            atomic_write(self.MIRA_SOURCES, content)
+            os.chmod(self.MIRA_SOURCES, 0o644)
             summary["status"] = "applied"
-        except PermissionError as e:
+        except OSError as e:
+            for source, disabled in reversed(moved):
+                if disabled.exists() and not source.exists():
+                    os.replace(disabled, source)
+            if previous_mira is None:
+                self.MIRA_SOURCES.unlink(missing_ok=True)
+            else:
+                atomic_write(self.MIRA_SOURCES, previous_mira)
+                if previous_mode is not None:
+                    os.chmod(self.MIRA_SOURCES, previous_mode)
+            if isinstance(e, PermissionError):
+                raise ProviderError(
+                    f"Permission denied updating APT sources.\n"
+                    "  Linux:   sudo mira debian set\n"
+                    "  Mira needs elevated privileges to manage system APT source files."
+                ) from e
             raise ProviderError(
-                f"Permission denied writing {self.MIRA_SOURCES}.\n"
-                "  Linux:   sudo mira debian set\n"
-                "  Mira only needs elevated privileges for system APT files."
+                f"Could not safely update APT sources: {e}"
             ) from e
         return summary
 
@@ -240,17 +320,49 @@ Signed-By: {keyring}
             "provider": "debian",
             "path": str(self.MIRA_SOURCES),
             "dry_run": dry_run,
-            "action": "remove mira.sources",
+            "action": "remove mira.sources and restore previous APT sources",
         }
-        if not self.MIRA_SOURCES.exists():
+        disabled_sources = self._disabled_source_pairs()
+        if not self.MIRA_SOURCES.exists() and not disabled_sources:
             summary["status"] = "nothing to reset"
             return summary
+        conflicts = [str(original) for original, _ in disabled_sources if original.exists()]
+        if conflicts:
+            raise ProviderError(
+                "Cannot restore saved APT sources because these paths are already occupied: "
+                + ", ".join(conflicts)
+                + ". Move or merge those files, then run 'mira debian reset' again."
+            )
         if dry_run:
+            summary["restore_sources"] = [str(original) for original, _ in disabled_sources]
             return summary
-        self.backup.create_backup(self.MIRA_SOURCES, provider="debian", operation="reset")
         try:
-            self.MIRA_SOURCES.unlink()
+            for _, disabled in disabled_sources:
+                self.backup.create_backup(disabled, provider="debian", operation="reset-source")
+            if self.MIRA_SOURCES.exists():
+                self.backup.create_backup(self.MIRA_SOURCES, provider="debian", operation="reset")
+        except OSError as e:
+            raise ProviderError(f"Could not back up APT sources before reset; nothing was changed: {e}") from e
+        mira_data = self.MIRA_SOURCES.read_bytes() if self.MIRA_SOURCES.exists() else None
+        mira_mode = stat.S_IMODE(self.MIRA_SOURCES.stat().st_mode) if self.MIRA_SOURCES.exists() else None
+        removed_mira = False
+        restored: list[tuple[Path, Path]] = []
+        try:
+            self.MIRA_SOURCES.unlink(missing_ok=True)
+            removed_mira = True
+            for original, disabled in disabled_sources:
+                os.replace(disabled, original)
+                restored.append((original, disabled))
             summary["status"] = "removed"
-        except PermissionError as e:
-            raise ProviderError(f"Permission denied removing {self.MIRA_SOURCES}") from e
+        except OSError as e:
+            for original, disabled in reversed(restored):
+                if original.exists() and not disabled.exists():
+                    os.replace(original, disabled)
+            if removed_mira and mira_data is not None:
+                atomic_write(self.MIRA_SOURCES, mira_data)
+                if mira_mode is not None:
+                    os.chmod(self.MIRA_SOURCES, mira_mode)
+            if isinstance(e, PermissionError):
+                raise ProviderError("Permission denied restoring APT source files; run 'sudo mira debian reset'.") from e
+            raise ProviderError(f"Could not safely restore APT sources: {e}") from e
         return summary
