@@ -56,6 +56,11 @@ def _reexec_with_sudo(term: Terminal) -> int:
     Re-launch the current Mira invocation under sudo so the user is prompted
     for their password once. Returns the child exit code, or raises on failure
     to start sudo.
+
+    Deliberately avoids ``sudo -E``: many sudoers policies set ``env_reset`` and
+    reject preserving the full environment, which produces the noisy warning
+    ``preserving the entire environment is not supported, '-E' is ignored``.
+    Only the small ``MIRA_ELEVATED`` marker is injected via ``env``.
     """
     if is_windows():
         raise MiraPermissionError(
@@ -64,14 +69,16 @@ def _reexec_with_sudo(term: Terminal) -> int:
         )
 
     # Prefer the mira binary on PATH so user installs and packages both work.
+    # Use `sudo env VAR=1 <cmd>` instead of `sudo -E` for policy compatibility.
+    env_prefix = ["sudo", "env", "MIRA_ELEVATED=1"]
     mira_bin = shutil.which("mira")
     if mira_bin and not getattr(sys, "frozen", False):
-        cmd = ["sudo", "-E", mira_bin, *sys.argv[1:]]
+        cmd = [*env_prefix, mira_bin, *sys.argv[1:]]
     elif getattr(sys, "frozen", False):
-        cmd = ["sudo", "-E", sys.executable, *sys.argv[1:]]
+        cmd = [*env_prefix, sys.executable, *sys.argv[1:]]
     else:
         # Source / module invocation: python -m mira ...
-        cmd = ["sudo", "-E", sys.executable, "-m", "mira", *sys.argv[1:]]
+        cmd = [*env_prefix, sys.executable, "-m", "mira", *sys.argv[1:]]
 
     term.info("Elevated privileges required; prompting for sudo password...")
     term.info("Command: " + " ".join(cmd))
@@ -100,7 +107,6 @@ def _ensure_privileges(provider_name: str, action: str, args: argparse.Namespace
         raise MiraPermissionError(
             "Still lacking privileges after elevation. Check sudoers / policy."
         )
-    os.environ["MIRA_ELEVATED"] = "1"
     return _reexec_with_sudo(term)
 
 
