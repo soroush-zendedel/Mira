@@ -8,6 +8,12 @@ Mira runs as a normal user for almost everything:
 
 Only **system-level** configuration writes need elevation.
 
+When a system write is required and the process is not already root,
+Mira re-launches itself with `sudo` so the password prompt appears once
+(`mira debian set`, `mira docker set`, `mira pacman set` / `reset`, and
+`mira pypi set --scope system`). Dry-runs never elevate. On Windows, run
+an elevated shell instead — automatic UAC elevation is not used.
+
 ## Docker Engine (`/etc/docker/daemon.json`)
 
 | Platform | How to elevate |

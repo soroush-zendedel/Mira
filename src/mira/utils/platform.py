@@ -26,6 +26,21 @@ def is_macos() -> bool:
     return get_os_name() == "darwin"
 
 
+def is_root() -> bool:
+    """True when the process already has administrative privileges."""
+    if is_windows():
+        try:
+            import ctypes  # Windows only
+
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
+        except Exception:
+            return False
+    try:
+        return os.geteuid() == 0
+    except AttributeError:
+        return False
+
+
 def get_python_version() -> tuple[int, int, int]:
     return sys.version_info[:3]
 

@@ -3,7 +3,7 @@
 from pathlib import Path
 
 APP_NAME = "mira"
-APP_VERSION = "1.0.24"
+APP_VERSION = "1.0.22"
 APP_DESCRIPTION = "Universal Software Repository Mirror Manager"
 
 # GitHub repository (official source)
@@ -13,6 +13,8 @@ GITHUB_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REP
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
 GITHUB_RELEASES_URL = f"{GITHUB_API_BASE}/releases/latest"
 MIRROR_MANIFEST_URL = f"{GITHUB_RAW_BASE}/mirrors/manifest.json"
+# Single archive of the whole repo (used by `mira update` to fetch the mirrors/ tree at once)
+MIRROR_ARCHIVE_URL = f"https://codeload.github.com/{GITHUB_OWNER}/{GITHUB_REPO}/zip/refs/heads/main"
 
 # Schema
 SCHEMA_VERSION = 1

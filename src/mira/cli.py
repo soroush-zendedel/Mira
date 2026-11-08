@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,18 +19,89 @@ from mira.core.registry import MirrorRegistry
 from mira.core.selector import MirrorSelector
 from mira.core.updater import DatabaseUpdater
 from mira.core.upgrader import AppUpgrader
-from mira.exceptions import MiraError, NoHealthyMirrorError
+from mira.exceptions import MiraError, NoHealthyMirrorError, PermissionError as MiraPermissionError
 from mira.providers.debian import DebianProvider
 from mira.providers.docker import DockerProvider
 from mira.providers.pypi import PyPIProvider
 from mira.providers.npm import NpmProvider
 from mira.providers.pacman import PacmanProvider
 from mira.services.backup import BackupService
+from mira.utils.platform import is_linux, is_root, is_windows
 from mira.utils.terminal import Terminal
 from mira.utils.path_setup import maybe_offer_path_setup
 from mira.services.uninstaller import uninstall as run_uninstall
 from mira.services.verify import verify_provider
 from mira.services.ephemeral import run_pip, run_apt, run_docker, run_npm, run_pacman
+
+
+# Providers whose set/reset write system files and need elevation on Linux.
+_SYSTEM_WRITE_PROVIDERS = frozenset({"debian", "docker", "pacman"})
+
+
+def _needs_elevation(provider_name: str, action: str, args: argparse.Namespace) -> bool:
+    """True when the action will write system-managed configuration."""
+    if action not in ("set", "reset"):
+        return False
+    if getattr(args, "dry_run", False):
+        return False
+    if provider_name in _SYSTEM_WRITE_PROVIDERS:
+        return True
+    if provider_name == "pypi" and getattr(args, "scope", "user") == "system":
+        return True
+    return False
+
+
+def _reexec_with_sudo(term: Terminal) -> int:
+    """
+    Re-launch the current Mira invocation under sudo so the user is prompted
+    for their password once. Returns the child exit code, or raises on failure
+    to start sudo.
+    """
+    if is_windows():
+        raise MiraPermissionError(
+            "This operation needs Administrator privileges on Windows.\n"
+            "Re-run the same command from an elevated PowerShell / CMD."
+        )
+
+    # Prefer the mira binary on PATH so user installs and packages both work.
+    mira_bin = shutil.which("mira")
+    if mira_bin and not getattr(sys, "frozen", False):
+        cmd = ["sudo", "-E", mira_bin, *sys.argv[1:]]
+    elif getattr(sys, "frozen", False):
+        cmd = ["sudo", "-E", sys.executable, *sys.argv[1:]]
+    else:
+        # Source / module invocation: python -m mira ...
+        cmd = ["sudo", "-E", sys.executable, "-m", "mira", *sys.argv[1:]]
+
+    term.info("Elevated privileges required; prompting for sudo password...")
+    term.info("Command: " + " ".join(cmd))
+    try:
+        completed = subprocess.run(cmd, check=False)
+    except FileNotFoundError as e:
+        raise MiraPermissionError(
+            "sudo is not available. Install sudo or re-run as root:\n"
+            f"  sudo {' '.join(sys.argv)}"
+        ) from e
+    return int(completed.returncode)
+
+
+def _ensure_privileges(provider_name: str, action: str, args: argparse.Namespace, term: Terminal) -> int | None:
+    """
+    If the action needs root and we are not root, re-exec under sudo.
+    Returns an exit code when the elevated child has finished (caller should
+    return it), or None when the current process may continue.
+    """
+    if not _needs_elevation(provider_name, action, args):
+        return None
+    if is_root():
+        return None
+    # Avoid infinite sudo loops if sudoers is misconfigured
+    if os.environ.get("MIRA_ELEVATED") == "1":
+        raise MiraPermissionError(
+            "Still lacking privileges after elevation. Check sudoers / policy."
+        )
+    os.environ["MIRA_ELEVATED"] = "1"
+    return _reexec_with_sudo(term)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -233,6 +307,10 @@ def cmd_provider(
         return 0
 
     if action == "set":
+        elevated = _ensure_privileges(provider_name, action, args, term)
+        if elevated is not None:
+            return elevated
+
         mirrors = prov.list_mirrors(countries=countries)
         if not mirrors:
             term.error("No mirrors available.")
@@ -303,6 +381,10 @@ def cmd_provider(
         return 7
 
     if action == "reset":
+        elevated = _ensure_privileges(provider_name, action, args, term)
+        if elevated is not None:
+            return elevated
+
         dry = getattr(args, "dry_run", False)
         try:
             opts = {"scope": getattr(args, "scope", "user")} if provider_name in ("pypi", "npm") else {}
@@ -383,6 +465,11 @@ def cmd_reset(term: Terminal, cfg: Config, registry: MirrorRegistry, args: argpa
     dry = getattr(args, "dry_run", False)
     which = getattr(args, "provider", "all") or "all"
     targets = ["pypi", "npm", "debian", "docker", "pacman"] if which == "all" else [which]
+
+    # Elevate once when any system-writing provider is in the target list.
+    if not dry and any(t in _SYSTEM_WRITE_PROVIDERS for t in targets) and not is_root():
+        elevated = _reexec_with_sudo(term)
+        return elevated
 
     backup = BackupService(cfg.backups_dir)
     providers = _make_providers(cfg, registry, backup)
