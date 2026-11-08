@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
-from mira.services.ephemeral import _rewrite_docker_image, _rewrite_docker_args, _strip_double_dash
+from mira.services.ephemeral import (
+    _inject_npm_registry_args,
+    _rewrite_docker_image,
+    _rewrite_docker_args,
+    _strip_double_dash,
+    run_npm,
+)
 
 
 class EphemeralDockerRewriteTest(unittest.TestCase):
@@ -69,3 +76,30 @@ class PipInjectTest(unittest.TestCase):
         )
         self.assertEqual(out.count("--index-url"), 1)
         self.assertIn("https://other/simple", out)
+
+
+class NpmPassthroughTest(unittest.TestCase):
+    def test_registry_injected_before_subcommand(self):
+        self.assertEqual(
+            _inject_npm_registry_args(["view", "express", "version"], "https://mirror.example/"),
+            ["--registry", "https://mirror.example/", "view", "express", "version"],
+        )
+
+    def test_respect_explicit_registry(self):
+        args = ["view", "--registry=https://custom.example/", "express"]
+        self.assertEqual(_inject_npm_registry_args(args, "https://mirror.example/"), args)
+
+    def test_run_uses_selected_mirror_and_forwards_exit_code(self):
+        with mock.patch("mira.services.ephemeral._select_best", return_value={"url": "https://mirror.example/"}) as select, \
+             mock.patch("mira.services.ephemeral.shutil.which", return_value="npm"), \
+             mock.patch("mira.services.ephemeral._run", return_value=0) as run:
+            code = run_npm(object(), object(), ["view", "express", "version"], None)
+        self.assertEqual(code, 0)
+        select.assert_called_once()
+        run.assert_called_once_with(["npm", "--registry", "https://mirror.example/", "view", "express", "version"])
+
+    def test_management_actions_are_not_forwarded(self):
+        from mira.cli import _should_run_npm_passthrough
+        self.assertFalse(_should_run_npm_passthrough(["npm", "list"]))
+        self.assertFalse(_should_run_npm_passthrough(["npm", "set", "--dry-run"]))
+        self.assertTrue(_should_run_npm_passthrough(["npm", "view", "express", "version"]))

@@ -120,8 +120,78 @@ mira pypi set --dry-run
 mira pypi set        # apply best healthy mirror (user scope)
 mira npm list
 mira npm set --dry-run
+mira npm view express version  # run npm once through the best mirror
 mira config set countries ir,de
 ```
+
+## npm commands and mirror selection
+
+Mira keeps npm's own commands available behind the `mira npm` prefix:
+
+- Mira management actions: `mira npm list`, `check`, `current`, `status`, `set`, and `reset`.
+- Other commands are passed to the installed npm CLI. For example,
+  `mira npm view express version` or `mira npm install lodash`.
+
+For a normal npm command, Mira checks the configured npm mirrors for the
+selected countries, ranks healthy ones using the configured strategy, and adds
+the chosen URL as a command-line `--registry` option. This applies to that
+invocation only; it does not edit `.npmrc`. An explicit `--registry` supplied
+by the user is preserved. The native `npm` command must be installed
+separately. Run `mira update` before the first one-shot npm command so the
+mirror database is present.
+
+To change npm's persistent default, use Mira's provider action instead:
+
+```sh
+mira npm list
+mira npm check --refresh
+mira npm set --dry-run
+mira npm set --scope user       # writes the user .npmrc, after backup
+npm config get registry         # inspect npm's effective default
+mira npm reset --scope user
+```
+
+`--scope` supports `user` (default), `project` (the current directory's
+`.npmrc`), and `system`. Mira preserves authentication and per-scope registry
+entries. Persistent registry settings also affect publishing; target the
+intended writable registry explicitly when publishing. npm can also use a
+registry assigned to a package scope (such as `@company`); those entries are
+preserved and may take precedence for matching packages. Lockfiles can contain
+resolved tarball URLs from the registry used when they were created; inspect
+`resolved` fields if an install still contacts a different host.
+
+`mira reset --provider npm` resets npm's user and project settings;
+`mira reset --dry-run` previews a reset for all providers.
+
+### Manually test each configured npm registry
+
+The health checker requests the public `express` package metadata at
+`<registry>/express`, then confirms the response names `express` and contains
+versions. These `npm view` commands query that same package metadata endpoint.
+Each command bypasses automatic selection and tests only the specified URL:
+
+| Country | Registry | Manual test |
+|---|---|---|
+| Iran | Runflare | `npm view express version --registry="https://mirror-npm.runflare.com/"` |
+| Iran | Novin Cloud | `npm view express version --registry="https://mirror.novin.cloud/artifactory/api/npm/npm/"` |
+| Iran | Kargadan | `npm view express version --registry="https://mirror.kargadan.ir/nexus/repository/npm-group/"` |
+| Iran | npmjs public registry | `npm view express version --registry="https://registry.npmjs.org/"` |
+| US, Switzerland, Germany | npmjs public registry (global option) | `npm view express version --registry="https://registry.npmjs.org/"` |
+
+A successful command prints an Express version. To ask Mira to probe and
+display all configured mirrors for your country filter, run:
+
+```sh
+mira npm check --refresh
+```
+
+To let Mira select a healthy one and make the same query, run:
+
+```sh
+mira npm view express version
+```
+
+Mira's current registry list and detailed npm notes are in [docs/npm.md](docs/npm.md).
 
 ### Docker / APT (need elevation)
 
@@ -136,10 +206,36 @@ sudo mira debian set
 
 See [docs/privileges.md](docs/privileges.md).
 
-For npm, `mira npm set` updates the selected `.npmrc` registry while preserving
-authentication and scoped registry entries. Use `--scope user|project|system`
-to choose the configuration file; `mira npm reset` removes only the default
-`registry` entry. See [docs/npm.md](docs/npm.md) for registry sources and usage.
+### Everyday provider workflow
+
+The same management actions are available for `pypi`, `npm`, `debian`, and
+`docker`:
+
+```sh
+mira <provider> list
+mira <provider> check --refresh
+mira <provider> current
+mira <provider> set --dry-run
+mira <provider> set
+mira <provider> reset
+```
+
+`set --dry-run` previews the chosen mirror and configuration change. A normal
+`set` backs up the destination configuration and verifies the selected mirror
+after applying it. `check` only checks health; it does not change package
+manager settings. The checker caches results for a while; use `--refresh` to
+force a new check.
+
+Mira uses all countries by default. Narrow the candidate list with
+`mira config set countries ir` or a comma-separated list such as
+`mira config set countries ir,de`; use `*` to return to all countries. Mirror
+ranking can be tuned with `mira config set strategy balanced` (or `fastest` or
+`reliability`). Run `mira config show` to inspect these settings and
+`mira status` to see the database version and configured country filter.
+
+APT and Docker write system-level configuration and usually require elevation
+for `set`. Mira backs up files before writing and does not restart Docker
+automatically; see [docs/privileges.md](docs/privileges.md).
 
 ---
 

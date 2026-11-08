@@ -18,6 +18,7 @@ from mira.core.selector import MirrorSelector
 from mira.exceptions import MiraError, NoHealthyMirrorError
 from mira.providers.debian import DebianProvider
 from mira.providers.docker import DockerProvider
+from mira.providers.npm import NpmProvider
 from mira.providers.pypi import PyPIProvider
 from mira.services.backup import BackupService
 
@@ -28,6 +29,7 @@ def _select_best(cfg, registry: MirrorRegistry, provider_name: str, term) -> dic
     backup = BackupService(cfg.backups_dir)
     providers = {
         "pypi": PyPIProvider(registry, backup),
+        "npm": NpmProvider(registry, backup),
         "debian": DebianProvider(registry, backup),
         "docker": DockerProvider(registry, backup),
     }
@@ -60,6 +62,7 @@ def _rank_mirrors(cfg, registry: MirrorRegistry, provider_name: str, term) -> li
     backup = BackupService(cfg.backups_dir)
     providers = {
         "pypi": PyPIProvider(registry, backup),
+        "npm": NpmProvider(registry, backup),
         "debian": DebianProvider(registry, backup),
         "docker": DockerProvider(registry, backup),
     }
@@ -163,6 +166,39 @@ def run_pip(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
     if term:
         term.error("All candidate PyPI mirrors failed for this pip command.")
     return last_code
+
+
+def _inject_npm_registry_args(user_args: list[str], url: str) -> list[str]:
+    """Pass the chosen npm registry to this invocation without editing npmrc."""
+    args = list(user_args)
+    if any(a in ("--registry", "-r") or a.startswith("--registry=") for a in args):
+        return args
+    return ["--registry", url, *args]
+
+
+def run_npm(cfg, registry: MirrorRegistry, user_args: list[str], term) -> int:
+    """Run npm with a selected mirror for this command only."""
+    user_args = _strip_double_dash(list(user_args))
+    if not user_args:
+        print("Usage: mira npm <npm args...>", file=sys.stderr)
+        return 2
+
+    # Help and version do not contact a registry and should work without a database.
+    if any(arg in ("--help", "-h", "--version") for arg in user_args):
+        npm = shutil.which("npm") or "npm"
+        return _run([npm, *user_args])
+
+    args = user_args
+    if not any(a in ("--registry", "-r") or a.startswith("--registry=") for a in args):
+        mirror = _select_best(cfg, registry, "npm", term)
+        args = _inject_npm_registry_args(args, mirror["url"])
+        if term and not getattr(term, "quiet", False):
+            term.info(f"Using npm registry {mirror['url']} for this command only")
+
+    npm = shutil.which("npm") or "npm"
+    if term and getattr(term, "verbose", False):
+        term.info(" ".join([npm, *args]))
+    return _run([npm, *args])
 
 
 

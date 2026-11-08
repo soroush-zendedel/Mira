@@ -26,7 +26,7 @@ from mira.utils.terminal import Terminal
 from mira.utils.path_setup import maybe_offer_path_setup
 from mira.services.uninstaller import uninstall as run_uninstall
 from mira.services.verify import verify_provider
-from mira.services.ephemeral import run_pip, run_apt, run_docker
+from mira.services.ephemeral import run_pip, run_apt, run_docker, run_npm
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -358,6 +358,15 @@ def _sanitize_argv(argv: list[str] | None) -> list[str]:
     return argv
 
 
+def _should_run_npm_passthrough(raw: list[str]) -> bool:
+    """Keep Mira's npm management actions; forward other npm commands."""
+    return (
+        len(raw) > 1
+        and raw[0].lower() == "npm"
+        and raw[1].lower() not in {"list", "check", "current", "status", "set", "reset"}
+    )
+
+
 def cmd_reset(term: Terminal, cfg: Config, registry: MirrorRegistry, args: argparse.Namespace) -> int:
     """Reset one or all providers back to default upstream configuration."""
     dry = getattr(args, "dry_run", False)
@@ -437,6 +446,24 @@ def main(argv: list[str] | None = None) -> int:
             return run_docker(cfg, registry, raw[1:], term)
         except NoHealthyMirrorError as e:
             term.error(str(e) or "No healthy docker mirror")
+            return 7
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
+
+    if _should_run_npm_passthrough(raw):
+        term = Terminal(use_color=True, quiet=False, verbose=False)
+        cfg = Config()
+        try:
+            cfg.load()
+        except MiraError as e:
+            term.error(str(e))
+            return e.code
+        registry = MirrorRegistry(cfg.database_dir)
+        try:
+            return run_npm(cfg, registry, raw[1:], term)
+        except NoHealthyMirrorError as e:
+            term.error(str(e) or "No healthy npm mirror")
             return 7
         except MiraError as e:
             term.error(str(e))

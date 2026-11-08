@@ -4,6 +4,18 @@ Mira supports `npm list`, `npm check`, `npm current`, `npm set`, and `npm reset`
 `set` changes the default `registry` value in an npm `.npmrc`; authentication
 tokens, comments, and scoped registry entries are preserved.
 
+To run a normal npm command through the selected mirror for one invocation,
+prefix it with `mira`. Mira actions (`list`, `check`, `current`, `status`,
+`set`, and `reset`) remain management commands.
+
+```sh
+mira npm view express version
+mira npm install lodash
+```
+
+The registry is passed on the command line and `.npmrc` is left unchanged. An
+explicit `--registry` in the npm arguments is respected.
+
 ```sh
 mira npm list
 mira npm check --refresh
