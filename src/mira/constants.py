@@ -3,7 +3,7 @@
 from pathlib import Path
 
 APP_NAME = "mira"
-APP_VERSION = "1.0.22"
+APP_VERSION = "1.0.28"
 APP_DESCRIPTION = "Universal Software Repository Mirror Manager"
 
 # GitHub repository (official source)
